@@ -7,7 +7,6 @@ from math import log, sqrt, exp
 from scipy.stats import norm
 import time
 import requests
-from bs4 import BeautifulSoup
 
 st.set_page_config(page_title="Stock Analysis Dashboard", layout="wide")
 
@@ -77,14 +76,43 @@ def get_earnings_surprises(ticker):
 # Function to get news
 def get_news(ticker):
     try:
-        # Use Yahoo Finance news
         stock = yf.Ticker(ticker)
         news = stock.news
         if news:
-            return news[:10]  # Return top 10 news items
+            return news[:10]
         return []
     except:
         return []
+
+# Function to get implied volatility from option chain
+def get_implied_volatility(ticker, current_price, option_type):
+    try:
+        stock = yf.Ticker(ticker)
+        expirations = stock.options
+        if not expirations:
+            return None
+        
+        # Use nearest expiration
+        nearest_exp = expirations[0]
+        opt_chain = stock.option_chain(nearest_exp)
+        
+        if option_type == "Call":
+            chain = opt_chain.calls
+        else:
+            chain = opt_chain.puts
+        
+        if chain.empty:
+            return None
+        
+        # Find option with strike closest to current price
+        chain['diff'] = abs(chain['strike'] - current_price)
+        closest = chain.loc[chain['diff'].idxmin()]
+        
+        if 'impliedVolatility' in closest and not pd.isna(closest['impliedVolatility']):
+            return closest['impliedVolatility'] * 100  # Convert to percentage
+        return None
+    except:
+        return None
 
 # TradingView Chart function
 def tradingview_full_chart(ticker, timeframe="D", theme="dark"):
@@ -234,6 +262,16 @@ with st.sidebar:
     option_type = st.selectbox("Option Type:", ["Call", "Put"])
     
     st.markdown("---")
+    st.header("📊 Volatility Setting")
+    
+    volatility_source = st.radio(
+        "Volatility Source:",
+        ["Historical Volatility (from price data)", "Implied Volatility (from option chain)"],
+        index=0,
+        help="Historical uses past price movement. Implied uses current option prices (more accurate for options)."
+    )
+    
+    st.markdown("---")
     st.header("🔄 Auto-Refresh")
     auto_refresh = st.checkbox("Auto-refresh data", value=False)
     refresh_interval = st.selectbox("Refresh interval:", ["30 sec", "60 sec", "120 sec", "300 sec"], index=1) if auto_refresh else None
@@ -245,7 +283,7 @@ with st.sidebar:
     
     st.caption(f"📅 Last update: {datetime.now().strftime('%H:%M:%S')}")
     st.markdown("---")
-    st.caption("💡 Tip: Turn off auto-refresh to avoid rate limits")
+    st.caption("💡 Tip: Use Implied Volatility for more accurate option pricing")
 
 # ============================================================
 # MAIN APP
@@ -275,11 +313,37 @@ if ticker:
         else:
             six_month_return = 0
         
-        if len(hist) > 20:
-            daily_returns = hist['Close'].pct_change().dropna()
-            volatility = daily_returns.std() * (252 ** 0.5) * 100
+        # ============================================================
+        # VOLATILITY CALCULATION (Based on user selection)
+        # ============================================================
+        if volatility_source == "Historical Volatility (from price data)":
+            if len(hist) > 20:
+                daily_returns = hist['Close'].pct_change().dropna()
+                volatility = daily_returns.std() * (252 ** 0.5) * 100
+            else:
+                volatility = 30
+            st.sidebar.caption(f"📊 Historical Volatility: {volatility:.1f}%")
         else:
-            volatility = 30
+            # Try to get implied volatility
+            implied_vol = get_implied_volatility(ticker, current_price, option_type)
+            if implied_vol and implied_vol > 0:
+                volatility = implied_vol
+                st.sidebar.caption(f"📊 Implied Volatility: {volatility:.1f}% (from option chain)")
+            else:
+                # Fallback to historical
+                if len(hist) > 20:
+                    daily_returns = hist['Close'].pct_change().dropna()
+                    volatility = daily_returns.std() * (252 ** 0.5) * 100
+                else:
+                    volatility = 30
+                st.sidebar.warning("Could not fetch implied volatility, using historical")
+                st.sidebar.caption(f"📊 Using Historical Volatility: {volatility:.1f}%")
+        
+        # Manual volatility override
+        manual_vol = st.sidebar.checkbox("Manually override volatility", value=False)
+        if manual_vol:
+            volatility = st.sidebar.number_input("Manual Volatility (%):", value=volatility, step=1.0)
+            st.sidebar.caption(f"Using manual volatility: {volatility:.1f}%")
         
         rsi = calculate_rsi(hist['Close'])
         current_rsi = rsi.iloc[-1] if not rsi.empty else 50
@@ -381,7 +445,6 @@ if ticker:
             horizontal=True
         )
         
-        # Theme selector for chart (matches app theme)
         chart_theme = "dark" if theme == "Dark" else "light"
         
         if chart_option == "Launch Full TradingView (Save Drawings)":
@@ -542,12 +605,10 @@ if ticker:
                     target_price = st.number_input("Target Price ($):", value=current_price, step=1.0, key="prob_target")
                     
                     if target_price > current_price:
-                        # Probability of going up
                         z_score = (log(target_price / current_price)) / (volatility / 100 * sqrt(days/365))
                         prob_up = norm.cdf(z_score) * 100
                         st.metric(f"Probability to reach ${target_price:.0f}", f"{prob_up:.1f}%")
                     elif target_price < current_price:
-                        # Probability of going down
                         z_score = (log(current_price / target_price)) / (volatility / 100 * sqrt(days/365))
                         prob_down = norm.cdf(z_score) * 100
                         st.metric(f"Probability to reach ${target_price:.0f}", f"{prob_down:.1f}%")
@@ -560,7 +621,6 @@ if ticker:
                     st.metric("Expected Move (±)", f"${expected_move:.2f}")
                     st.caption(f"Based on {volatility:.0f}% volatility over {days} days")
                     
-                    # Probability of expiring ITM
                     if option_type == "Call":
                         prob_itm = norm.cdf(d2) * 100
                     else:
@@ -573,7 +633,6 @@ if ticker:
                 st.markdown("---")
                 st.subheader("📊 Trading Signal & Recommendation")
                 
-                # Input for actual market price
                 col1, col2 = st.columns(2)
                 
                 with col1:
@@ -603,31 +662,26 @@ if ticker:
                 if market_price is not None and market_price > 0 and option_price > 0:
                     if diff_percent < -15:
                         recommendation = "🔥 STRONG BUY"
-                        rec_color = "green"
                         rec_reason = f"Option is significantly undervalued ({abs(diff_percent):.0f}% below theoretical value)"
                         action = "Consider buying this option - market is underpricing this opportunity"
                         risk_level = "HIGH" if diff_percent < -30 else "MODERATE"
                     elif diff_percent < -5:
                         recommendation = "✅ BUY"
-                        rec_color = "lightgreen"
                         rec_reason = f"Option is undervalued ({abs(diff_percent):.0f}% below theoretical value)"
                         action = "Good opportunity to buy - market is offering a discount"
                         risk_level = "LOW"
                     elif diff_percent > 15:
                         recommendation = "⚠️ STRONG SELL"
-                        rec_color = "red"
                         rec_reason = f"Option is significantly overvalued ({diff_percent:.0f}% above theoretical value)"
                         action = "Consider selling or avoiding - market is overpricing this option"
                         risk_level = "HIGH"
                     elif diff_percent > 5:
                         recommendation = "❌ SELL / AVOID"
-                        rec_color = "orange"
                         rec_reason = f"Option is overvalued ({diff_percent:.0f}% above theoretical value)"
                         action = "Premium is expensive - consider selling or waiting for better entry"
                         risk_level = "MODERATE"
                     else:
                         recommendation = "⏸️ HOLD / MONITOR"
-                        rec_color = "yellow"
                         rec_reason = f"Option is fairly priced ({abs(diff_percent):.0f}% from theoretical value)"
                         action = "Wait for better opportunity or enter small position"
                         risk_level = "LOW"
@@ -688,56 +742,3 @@ if ticker:
                         
                         account_size = st.number_input("Account Size ($):", value=10000, step=1000, key="account_size")
                         risk_percent = st.number_input("Risk Per Trade (%):", value=2.0, step=0.5, key="risk_percent") / 100
-                        
-                        max_risk = account_size * risk_percent
-                        
-                        st.metric("Max Risk per Trade", f"${max_risk:.2f}")
-                        st.caption(f"Based on {risk_percent*100:.0f}% of ${account_size:,.0f} account")
-                        
-                        if market_price and market_price > 0:
-                            contracts = int(max_risk / (market_price * 100))
-                            total_risk = contracts * market_price * 100
-                            st.metric("Max Contracts", contracts)
-                            st.metric("Total Risk", f"${total_risk:.2f}")
-                            
-                            if contracts > 0:
-                                st.success(f"✅ Recommended: Buy **{contracts} contract(s)**")
-                            else:
-                                st.warning("⚠️ Account too small for 1 contract at current risk parameters")
-                        else:
-                            st.info("Enter market price to calculate position size")
-                
-                else:
-                    st.info("📝 Enter the actual option market price above to get a trading recommendation")
-        
-        else:
-            st.error("Please select a future expiration date")
-        
-        # ============================================================
-        # REAL-TIME NEWS
-        # ============================================================
-        st.markdown("---")
-        st.subheader("📰 Real-Time News")
-        
-        news = get_news(ticker)
-        
-        if news:
-            for i, article in enumerate(news[:10]):
-                title = article.get('title', 'No title')
-                link = article.get('link', '#')
-                publisher = article.get('publisher', 'Unknown')
-                pub_date = article.get('providerPublishTime', None)
-                
-                if pub_date:
-                    date_str = datetime.fromtimestamp(pub_date).strftime('%Y-%m-%d %H:%M')
-                else:
-                    date_str = "Recently"
-                
-                st.markdown(f"**{i+1}. [{title}]({link})**")
-                st.caption(f"📰 {publisher} | 🕐 {date_str}")
-                st.markdown("---")
-        else:
-            st.info(f"No recent news found for {ticker}")
-        
-        # ============================================================
-        # WATCHLIST & PORTFOLIO
