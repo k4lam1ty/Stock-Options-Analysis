@@ -25,6 +25,12 @@ def format_number(value):
         return "0"
     return f"{value:,.0f}"
 
+def format_number_decimal(value, decimals=2):
+    """Format number with commas and decimals"""
+    if value is None or value == 0:
+        return "0"
+    return f"{value:,.{decimals}f}"
+
 def format_percentage(value):
     """Format percentage with commas"""
     if value is None:
@@ -41,6 +47,19 @@ def format_large_number(value):
         return f"${value/1_000_000:,.2f}M"
     else:
         return f"${value:,.2f}"
+
+def format_volume(value):
+    """Format volume with abbreviations"""
+    if value is None or value == 0:
+        return "0"
+    if value >= 1_000_000_000:
+        return f"{value/1_000_000_000:,.1f}B"
+    elif value >= 1_000_000:
+        return f"{value/1_000_000:,.1f}M"
+    elif value >= 1_000:
+        return f"{value/1_000:,.1f}K"
+    else:
+        return f"{value:,.0f}"
 
 # ============================================================
 # SESSION STATE FOR WATCHLIST
@@ -357,7 +376,7 @@ if ticker:
         asset_type = "Index/ETF" if is_index_ticker else "Stock"
         
         # ============================================================
-        # HEADER METRICS (FORMATTED)
+        # HEADER METRICS (FULLY FORMATTED)
         # ============================================================
         st.subheader(f"📊 {ticker} - {info.get('longName', ticker)} ({asset_type})")
         
@@ -373,14 +392,14 @@ if ticker:
         with col5:
             st.metric("52-Week Low", format_currency(info.get('fiftyTwoWeekLow', 0)))
         with col6:
-            st.metric("Volume", format_number(info.get('volume', 0)))
+            st.metric("Volume", format_volume(info.get('volume', 0)))
         
         st.markdown("---")
         
         col1, col2, col3, col4, col5 = st.columns(5)
         with col1:
             pe = info.get('trailingPE', 0)
-            st.metric("P/E Ratio", f"{pe:.2f}" if pe else "N/A")
+            st.metric("P/E Ratio", f"{pe:,.2f}" if pe else "N/A")
         with col2:
             st.metric("6-Month Return", f"{six_month_return:+.1f}%")
         with col3:
@@ -460,7 +479,7 @@ if ticker:
         st.markdown("---")
         
         # ============================================================
-        # COMPANY INFORMATION (FORMATTED)
+        # COMPANY INFORMATION (FULLY FORMATTED)
         # ============================================================
         col1, col2 = st.columns(2)
         with col1:
@@ -471,22 +490,25 @@ if ticker:
                 st.write(f"**Industry:** {info.get('industry', 'N/A')}")
             st.write(f"**Country:** {info.get('country', 'N/A')}")
             st.write(f"**Asset Type:** {asset_type}")
-            st.write(f"**Volume:** {format_number(info.get('volume', 0))}")
+            st.write(f"**Volume:** {format_volume(info.get('volume', 0))}")
+            st.write(f"**Avg Volume:** {format_volume(info.get('averageVolume', 0))}")
             st.write(f"**Market Cap:** {format_large_number(info.get('marketCap', 0))}")
         
         with col2:
             st.subheader("📈 Key Metrics")
             if not is_index_ticker:
-                st.write(f"**P/E Ratio:** {info.get('trailingPE', 0):.2f}")
-                st.write(f"**Forward P/E:** {info.get('forwardPE', 0):.2f}")
-                st.write(f"**Price/Book:** {info.get('priceToBook', 0):.2f}")
+                st.write(f"**P/E Ratio:** {info.get('trailingPE', 0):,.2f}" if info.get('trailingPE') else "N/A")
+                st.write(f"**Forward P/E:** {info.get('forwardPE', 0):,.2f}" if info.get('forwardPE') else "N/A")
+                st.write(f"**PEG Ratio:** {info.get('pegRatio', 0):,.2f}" if info.get('pegRatio') else "N/A")
+                st.write(f"**Price/Book:** {info.get('priceToBook', 0):,.2f}" if info.get('priceToBook') else "N/A")
+                st.write(f"**Price/Sales:** {info.get('priceToSalesTrailing12Months', 0):,.2f}" if info.get('priceToSalesTrailing12Months') else "N/A")
                 st.write(f"**Dividend Yield:** {format_percentage(dividend_yield*100) if dividend_yield > 0 else 'N/A'}")
             st.write(f"**Beta:** {info.get('beta', 'N/A')}")
         
         st.markdown("---")
         
         # ============================================================
-        # FINANCIAL STATEMENTS (FORMATTED)
+        # FINANCIAL STATEMENTS (FULLY FORMATTED)
         # ============================================================
         if not is_index_ticker and not income_statement.empty:
             st.subheader("💰 Key Financials (in Millions)")
@@ -523,8 +545,8 @@ if ticker:
                 "Total Debt": total_debt / 1e6 if total_debt else 0,
                 "Total Equity": total_equity / 1e6 if total_equity else 0,
             }
-            df = pd.DataFrame(list(financials.items()), columns=["Metric", "Value ($M)"])
-            df["Value ($M)"] = df["Value ($M)"].apply(lambda x: f"${x:,.2f}M" if x > 0 else "N/A")
+            df = pd.DataFrame(list(financials.items()), columns=["Metric", "Value"])
+            df["Value"] = df["Value"].apply(lambda x: f"${x:,.2f}M" if x > 0 else "N/A")
             st.dataframe(df, use_container_width=True, hide_index=True)
             st.markdown("---")
         
@@ -592,7 +614,7 @@ if ticker:
                 col1, col2 = st.columns(2)
                 with col1:
                     st.write("**Probability of Touching a Price**")
-                    target_price = st.number_input("Target Price ($):", value=current_price, step=1.0, key="prob_target")
+                    target_price = st.number_input("Target Price ($):", value=current_price, step=1.0, key="prob_target", format="%.2f")
                     if target_price > current_price:
                         z_score = (log(target_price / current_price)) / (volatility / 100 * sqrt(days/365))
                         prob_up = norm.cdf(z_score) * 100
@@ -683,11 +705,15 @@ if ticker:
                             discount = option_price - market_price_input
                             discount_pct = discount / option_price * 100
                             st.write(f"💰 Discount: **{format_currency(discount)}** ({discount_pct:.0f}%)")
+                        elif market_price_input > option_price:
+                            premium = market_price_input - option_price
+                            premium_pct = premium / option_price * 100
+                            st.write(f"💸 Premium: **{format_currency(premium)}** ({premium_pct:.0f}%)")
                     with col2:
                         st.write("**Profit Scenarios**")
                         if market_price_input < option_price:
                             potential_gain = (option_price - market_price_input) / market_price_input * 100
-                            st.write(f"📈 Upside to Fair Value: **+{potential_gain:.0f}%**")
+                            st.metric("Upside to Fair Value", f"+{potential_gain:.0f}%")
                     with col3:
                         st.write("**Suggested Trade**")
                         if "BUY" in recommendation:
@@ -695,25 +721,57 @@ if ticker:
                             st.write(f"💰 Risk per contract: **{format_currency(market_price_input * 100)}**")
                         elif "SELL" in recommendation:
                             st.write("❌ **AVOID** buying")
+                            st.write("💡 Consider selling if you own")
                         else:
                             st.write("⏸️ **WAIT** for better price")
                     
                     # ============================================================
-                    # POSITION SIZE CALCULATOR (FORMATTED)
+                    # POSITION SIZE CALCULATOR (FULLY FORMATTED)
                     # ============================================================
                     with st.expander("💰 Position Size Calculator"):
-                        account_size = st.number_input("Account Size ($):", value=10000, step=1000, key="account_size")
-                        risk_percent = st.number_input("Risk Per Trade (%):", value=2.0, step=0.5, key="risk_percent") / 100
-                        max_risk = account_size * risk_percent
+                        st.subheader("Risk Management")
+                        
+                        col1, col2 = st.columns(2)
+                        with col1:
+                            account_size = st.number_input("Account Size ($):", value=10000, step=1000, key="account_size", format="%d")
+                        with col2:
+                            risk_percent = st.number_input("Risk Per Trade (%):", value=2.0, step=0.5, key="risk_percent")
+                        
+                        risk_percent_decimal = risk_percent / 100
+                        max_risk = account_size * risk_percent_decimal
+                        
                         st.metric("Max Risk per Trade", format_currency(max_risk))
+                        st.caption(f"Based on {risk_percent:.1f}% of {format_currency(account_size)} account")
+                        
+                        st.markdown("---")
+                        
                         if market_price_input and market_price_input > 0:
                             contracts = int(max_risk / (market_price_input * 100))
-                            st.metric("Max Contracts", contracts)
-                            st.metric("Total Risk", format_currency(contracts * market_price_input * 100))
+                            total_risk = contracts * market_price_input * 100
+                            total_position_value = contracts * market_price_input * 100
+                            
+                            col1, col2, col3 = st.columns(3)
+                            with col1:
+                                st.metric("Max Contracts", contracts)
+                            with col2:
+                                st.metric("Total Risk", format_currency(total_risk))
+                            with col3:
+                                st.metric("Position Value", format_currency(total_position_value))
+                            
+                            st.markdown("---")
+                            
                             if contracts > 0:
-                                st.success(f"✅ Recommended: Buy **{contracts} contract(s)**")
+                                st.success(f"✅ **Recommended Position:** Buy **{contracts} contract(s)** at {format_currency(market_price_input)} each")
+                                st.caption(f"• Total cost: {format_currency(total_position_value)}")
+                                st.caption(f"• Risk: {format_currency(total_risk)} ({risk_percent:.1f}% of account)")
+                                
+                                if contracts > 5:
+                                    st.warning(f"⚠️ {contracts} contracts is a large position - consider reducing size")
                             else:
-                                st.warning("⚠️ Account too small for 1 contract")
+                                st.warning(f"⚠️ Account too small for 1 contract")
+                                st.caption(f"Minimum required: {format_currency(market_price_input * 100)}")
+                        else:
+                            st.info("📝 Enter the option market price above to calculate position size")
                 else:
                     st.info("📝 Enter the actual option market price to get a trading recommendation")
         else:
