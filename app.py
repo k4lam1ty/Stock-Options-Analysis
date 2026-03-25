@@ -12,6 +12,10 @@ st.set_page_config(page_title="Stock Analysis Dashboard", layout="wide")
 st.title("📈 Stock Analysis Dashboard")
 st.markdown("---")
 
+# ============================================================
+# FUNCTIONS
+# ============================================================
+
 # Function to get current risk-free rate
 def get_risk_free_rate():
     try:
@@ -37,54 +41,6 @@ def get_dividend_yield(ticker):
         return 0
     except:
         return 0
-
-# Get initial risk-free rate
-initial_rate = get_risk_free_rate()
-
-# Sidebar for inputs
-with st.sidebar:
-    st.header("🔍 Input")
-    ticker = st.text_input("Stock / Index Ticker:", "SPY").upper()
-    
-    st.caption("Examples: Stocks: AAPL, MSFT, GME | Indices: SPY, QQQ, DIA, IWM")
-    
-    st.markdown("---")
-    st.header("💰 Rates")
-    
-    # Auto-fetch risk-free rate toggle
-    auto_rate = st.checkbox("Auto-fetch Risk-Free Rate (10-Year Treasury)", value=True)
-    
-    if auto_rate:
-        risk_free_rate = get_risk_free_rate()
-        st.success(f"📊 10-Year Treasury Yield: {risk_free_rate*100:.2f}%")
-        
-        manual_override = st.checkbox("Manually override risk-free rate", value=False)
-        if manual_override:
-            manual_rate = st.number_input("Manual Risk-Free Rate (%):", value=risk_free_rate*100, step=0.1) / 100
-            risk_free_rate = manual_rate
-            st.info(f"Using manual rate: {risk_free_rate*100:.2f}%")
-    else:
-        risk_free_rate = st.number_input("Risk-Free Rate (%):", value=4.5, step=0.1) / 100
-    
-    st.markdown("---")
-    st.header("⚙️ Options Calculator")
-    strike = st.number_input("Strike Price:", value=100.0, step=1.0)
-    days = st.number_input("Days to Expiration:", value=30, step=1)
-    option_type = st.selectbox("Option Type:", ["Call", "Put"])
-    
-    st.markdown("---")
-    st.header("🔄 Auto-Refresh")
-    auto_refresh = st.checkbox("Auto-refresh data", value=False)  # OFF by default
-    refresh_interval = st.selectbox("Refresh interval:", ["30 sec", "60 sec", "120 sec"], index=1) if auto_refresh else None
-    
-    if auto_refresh:
-        interval_seconds = int(refresh_interval.split()[0])
-        st.caption(f"🔄 Refreshing every {interval_seconds} seconds")
-        st.caption(f"⚠️ Frequent refreshes may cause rate limits")
-    
-    st.caption(f"📅 Last update: {datetime.now().strftime('%H:%M:%S')}")
-    st.markdown("---")
-    st.caption("💡 Tip: Turn off auto-refresh to avoid rate limits")
 
 # TradingView Chart function
 def tradingview_full_chart(ticker, timeframe="D"):
@@ -151,6 +107,76 @@ def get_stock_data(ticker):
         'is_index': is_index(ticker)
     }
 
+def calculate_rsi(data, window=14):
+    delta = data.diff()
+    gain = (delta.where(delta > 0, 0)).rolling(window=window).mean()
+    loss = (-delta.where(delta < 0, 0)).rolling(window=window).mean()
+    rs = gain / loss
+    rsi = 100 - (100 / (1 + rs))
+    return rsi
+
+def calculate_macd(data, fast=12, slow=26, signal=9):
+    ema_fast = data.ewm(span=fast, adjust=False).mean()
+    ema_slow = data.ewm(span=slow, adjust=False).mean()
+    macd_line = ema_fast - ema_slow
+    signal_line = macd_line.ewm(span=signal, adjust=False).mean()
+    histogram = macd_line - signal_line
+    return macd_line, signal_line, histogram
+
+# ============================================================
+# SIDEBAR
+# ============================================================
+
+# Get initial risk-free rate
+initial_rate = get_risk_free_rate()
+
+with st.sidebar:
+    st.header("🔍 Input")
+    ticker = st.text_input("Stock / Index Ticker:", "SPY").upper()
+    
+    st.caption("Examples: Stocks: AAPL, MSFT, GME | Indices: SPY, QQQ, DIA, IWM")
+    
+    st.markdown("---")
+    st.header("💰 Rates")
+    
+    auto_rate = st.checkbox("Auto-fetch Risk-Free Rate (10-Year Treasury)", value=True)
+    
+    if auto_rate:
+        risk_free_rate = get_risk_free_rate()
+        st.success(f"📊 10-Year Treasury Yield: {risk_free_rate*100:.2f}%")
+        
+        manual_override = st.checkbox("Manually override risk-free rate", value=False)
+        if manual_override:
+            manual_rate = st.number_input("Manual Risk-Free Rate (%):", value=risk_free_rate*100, step=0.1) / 100
+            risk_free_rate = manual_rate
+            st.info(f"Using manual rate: {risk_free_rate*100:.2f}%")
+    else:
+        risk_free_rate = st.number_input("Risk-Free Rate (%):", value=4.5, step=0.1) / 100
+    
+    st.markdown("---")
+    st.header("⚙️ Options Calculator")
+    strike = st.number_input("Strike Price:", value=100.0, step=1.0)
+    days = st.number_input("Days to Expiration:", value=30, step=1)
+    option_type = st.selectbox("Option Type:", ["Call", "Put"])
+    
+    st.markdown("---")
+    st.header("🔄 Auto-Refresh")
+    auto_refresh = st.checkbox("Auto-refresh data", value=False)
+    refresh_interval = st.selectbox("Refresh interval:", ["30 sec", "60 sec", "120 sec", "300 sec"], index=1) if auto_refresh else None
+    
+    if auto_refresh:
+        interval_seconds = int(refresh_interval.split()[0])
+        st.caption(f"🔄 Refreshing every {interval_seconds} seconds")
+        st.caption(f"⚠️ Frequent refreshes may cause rate limits")
+    
+    st.caption(f"📅 Last update: {datetime.now().strftime('%H:%M:%S')}")
+    st.markdown("---")
+    st.caption("💡 Tip: Turn off auto-refresh to avoid rate limits")
+
+# ============================================================
+# MAIN APP
+# ============================================================
+
 if ticker:
     try:
         with st.spinner(f"Loading data for {ticker}..."):
@@ -181,18 +207,14 @@ if ticker:
         else:
             volatility = 30
         
-        def calculate_rsi(data, window=14):
-            delta = data.diff()
-            gain = (delta.where(delta > 0, 0)).rolling(window=window).mean()
-            loss = (-delta.where(delta < 0, 0)).rolling(window=window).mean()
-            rs = gain / loss
-            rsi = 100 - (100 / (1 + rs))
-            return rsi
-        
         rsi = calculate_rsi(hist['Close'])
         current_rsi = rsi.iloc[-1] if not rsi.empty else 50
         
         asset_type = "Index/ETF" if is_index_ticker else "Stock"
+        
+        # ============================================================
+        # HEADER METRICS
+        # ============================================================
         st.subheader(f"📊 {ticker} - {info.get('longName', ticker)} ({asset_type})")
         
         col1, col2, col3, col4, col5, col6 = st.columns(6)
@@ -239,6 +261,9 @@ if ticker:
         
         st.markdown("---")
         
+        # ============================================================
+        # TRADINGVIEW CHART
+        # ============================================================
         st.subheader("📉 TradingView Chart")
         
         chart_option = st.radio(
@@ -268,8 +293,11 @@ if ticker:
         
         st.markdown("---")
         
-        # Company Information and Financials (keep existing code)
+        # ============================================================
+        # COMPANY INFORMATION
+        # ============================================================
         col1, col2 = st.columns(2)
+        
         with col1:
             st.subheader("🏢 Asset Information")
             st.write(f"**Name:** {info.get('longName', 'N/A')}")
@@ -291,7 +319,9 @@ if ticker:
         
         st.markdown("---")
         
-        # Financial statements section
+        # ============================================================
+        # FINANCIAL STATEMENTS
+        # ============================================================
         if not is_index_ticker and not income_statement.empty:
             st.subheader("💰 Key Financials (in Millions)")
             latest_income = income_statement.iloc[:, 0] if len(income_statement.columns) > 0 else None
@@ -332,8 +362,11 @@ if ticker:
             st.dataframe(df, use_container_width=True, hide_index=True)
             st.markdown("---")
         
-        # Options Calculator
+        # ============================================================
+        # OPTIONS CALCULATOR
+        # ============================================================
         st.subheader("🎯 Options Price Calculator (Black-Scholes)")
+        
         col1, col2, col3 = st.columns(3)
         with col1:
             st.write(f"**Current Price:** ${current_price:.2f}")
@@ -382,7 +415,140 @@ if ticker:
                 st.metric("Theta (Daily)", f"{theta/365:.4f}")
             with col5:
                 st.metric("Vega (per 1%)", f"{vega:.4f}")
+            
+            # ============================================================
+            # TRADING SIGNAL & RECOMMENDATION SECTION
+            # ============================================================
+            st.markdown("---")
+            st.subheader("📊 Trading Signal & Recommendation")
+            
+            # Input for actual market price
+            col1, col2 = st.columns(2)
+            
+            with col1:
+                market_price = st.number_input(
+                    "Enter Actual Option Market Price ($):", 
+                    value=float(option_price),
+                    step=0.05,
+                    format="%.2f",
+                    help="Enter the current market price of the option from your broker"
+                )
+            
+            with col2:
+                # Calculate difference
+                price_diff = market_price - option_price
+                diff_percent = (price_diff / option_price * 100) if option_price > 0 else 0
+                
+                st.metric(
+                    "Price Difference", 
+                    f"${price_diff:.2f}", 
+                    delta=f"{diff_percent:+.1f}%",
+                    delta_color="normal"
+                )
+            
+            # Create recommendation logic
+            if option_price > 0:
+                if diff_percent < -15:
+                    recommendation = "🔥 STRONG BUY"
+                    rec_color = "green"
+                    rec_reason = f"Option is significantly undervalued ({abs(diff_percent):.0f}% below theoretical value)"
+                    action = "Consider buying this option - market is underpricing this opportunity"
+                    risk_level = "HIGH" if diff_percent < -30 else "MODERATE"
+                elif diff_percent < -5:
+                    recommendation = "✅ BUY"
+                    rec_color = "lightgreen"
+                    rec_reason = f"Option is undervalued ({abs(diff_percent):.0f}% below theoretical value)"
+                    action = "Good opportunity to buy - market is offering a discount"
+                    risk_level = "LOW"
+                elif diff_percent > 15:
+                    recommendation = "⚠️ STRONG SELL"
+                    rec_color = "red"
+                    rec_reason = f"Option is significantly overvalued ({diff_percent:.0f}% above theoretical value)"
+                    action = "Consider selling or avoiding - market is overpricing this option"
+                    risk_level = "HIGH"
+                elif diff_percent > 5:
+                    recommendation = "❌ SELL / AVOID"
+                    rec_color = "orange"
+                    rec_reason = f"Option is overvalued ({diff_percent:.0f}% above theoretical value)"
+                    action = "Premium is expensive - consider selling or waiting for better entry"
+                    risk_level = "MODERATE"
+                else:
+                    recommendation = "⏸️ HOLD / MONITOR"
+                    rec_color = "yellow"
+                    rec_reason = f"Option is fairly priced ({abs(diff_percent):.0f}% from theoretical value)"
+                    action = "Wait for better opportunity or enter small position"
+                    risk_level = "LOW"
+                
+                # Display recommendation card
+                st.markdown(f"""
+                <div style="background-color: #1e1e2e; border-radius: 10px; padding: 20px; border-left: 5px solid {'#a6e3a1' if 'BUY' in recommendation else '#f38ba8' if 'SELL' in recommendation else '#f9e2af'};">
+                    <h3 style="margin: 0; color: {'#a6e3a1' if 'BUY' in recommendation else '#f38ba8' if 'SELL' in recommendation else '#f9e2af'};">{recommendation}</h3>
+                    <p style="margin: 10px 0 5px 0;"><strong>Reason:</strong> {rec_reason}</p>
+                    <p style="margin: 5px 0;"><strong>Action:</strong> {action}</p>
+                    <p style="margin: 5px 0;"><strong>Risk Level:</strong> {risk_level}</p>
+                </div>
+                """, unsafe_allow_html=True)
+                
+                # Additional metrics
+                st.markdown("---")
+                st.subheader("📈 Trade Analysis")
+                
+                col1, col2, col3 = st.columns(3)
+                
+                with col1:
+                    st.write("**Price Comparison**")
+                    st.write(f"📊 Theoretical: **${option_price:.2f}**")
+                    st.write(f"💵 Market: **${market_price:.2f}**")
+                    if market_price < option_price:
+                        st.write(f"💰 Discount: **${option_price - market_price:.2f}** ({(option_price - market_price)/option_price*100:.0f}%)")
+                    elif market_price > option_price:
+                        st.write(f"💸 Premium: **${market_price - option_price:.2f}** ({(market_price - option_price)/option_price*100:.0f}%)")
+                    else:
+                        st.write(f"⚖️ Fair Value")
+                
+                with col2:
+                    st.write("**Profit Scenarios**")
+                    if market_price < option_price:
+                        potential_gain = (option_price - market_price) / market_price * 100
+                        st.write(f"📈 Upside to Fair Value: **+{potential_gain:.0f}%**")
+                        st.write(f"🎯 Target: **${option_price:.2f}**")
+                    else:
+                        st.write(f"⚠️ Currently overvalued by **{((market_price - option_price)/option_price*100):.0f}%**")
+                
+                with col3:
+                    st.write("**Suggested Trade**")
+                    if "BUY" in recommendation:
+                        st.write("✅ **BUY** this option")
+                        st.write(f"💰 Risk per contract: **${market_price * 100:.2f}**")
+                    elif "SELL" in recommendation:
+                        st.write("❌ **AVOID** buying")
+                        st.write("💡 Consider selling if you own")
+                    else:
+                        st.write("⏸️ **WAIT** for better price")
+                        st.write("💡 Enter at fair value or below")
+                
+                st.markdown("---")
+                
+                # Optional trade notes
+                with st.expander("📝 Trade Notes & Checklist"):
+                    st.write("**Before entering the trade:**")
+                    st.write("- [ ] Verify the option chain (bid/ask spread)")
+                    st.write("- [ ] Check volume and open interest")
+                    st.write("- [ ] Confirm days to expiration")
+                    st.write("- [ ] Review your risk management rules")
+                    st.write("- [ ] Set a stop loss or profit target")
+                    st.write("- [ ] Consider position size (recommended: 1-2% of account)")
+                    
+                    if market_price < option_price:
+                        st.success(f"✅ This option is undervalued by {abs(diff_percent):.0f}%")
+                        st.write(f"💡 Consider buying if the theoretical value of ${option_price:.2f} is realistic")
+                    elif market_price > option_price:
+                        st.warning(f"⚠️ This option is overvalued by {diff_percent:.0f}%")
+                        st.write(f"💡 Wait for the price to drop closer to ${option_price:.2f}")
         
+        # ============================================================
+        # AUTO-REFRESH LOGIC
+        # ============================================================
         if auto_refresh:
             time.sleep(interval_seconds)
             st.rerun()
