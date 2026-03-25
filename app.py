@@ -417,37 +417,41 @@ if ticker:
                 st.metric("Vega (per 1%)", f"{vega:.4f}")
             
             # ============================================================
-            # TRADING SIGNAL & RECOMMENDATION SECTION
+            # TRADING SIGNAL & RECOMMENDATION SECTION (FIXED)
             # ============================================================
             st.markdown("---")
             st.subheader("📊 Trading Signal & Recommendation")
             
-            # Input for actual market price
+            # Input for actual market price - FIXED: value=None so it doesn't auto-populate
             col1, col2 = st.columns(2)
             
             with col1:
                 market_price = st.number_input(
                     "Enter Actual Option Market Price ($):", 
-                    value=float(option_price),
+                    value=None,
                     step=0.05,
                     format="%.2f",
                     help="Enter the current market price of the option from your broker"
                 )
             
             with col2:
-                # Calculate difference
-                price_diff = market_price - option_price
-                diff_percent = (price_diff / option_price * 100) if option_price > 0 else 0
-                
-                st.metric(
-                    "Price Difference", 
-                    f"${price_diff:.2f}", 
-                    delta=f"{diff_percent:+.1f}%",
-                    delta_color="normal"
-                )
+                # Calculate difference (only if market price is entered)
+                if market_price is not None and market_price > 0 and option_price > 0:
+                    price_diff = market_price - option_price
+                    diff_percent = (price_diff / option_price * 100)
+                    st.metric(
+                        "Price Difference", 
+                        f"${price_diff:.2f}", 
+                        delta=f"{diff_percent:+.1f}%",
+                        delta_color="normal"
+                    )
+                else:
+                    st.info("Enter market price to see difference")
+                    price_diff = 0
+                    diff_percent = 0
             
-            # Create recommendation logic
-            if option_price > 0:
+            # Create recommendation logic (only if market price is entered)
+            if market_price is not None and market_price > 0 and option_price > 0:
                 if diff_percent < -15:
                     recommendation = "🔥 STRONG BUY"
                     rec_color = "green"
@@ -545,6 +549,9 @@ if ticker:
                     elif market_price > option_price:
                         st.warning(f"⚠️ This option is overvalued by {diff_percent:.0f}%")
                         st.write(f"💡 Wait for the price to drop closer to ${option_price:.2f}")
+
+            else:
+                st.info("📝 Enter the actual option market price above to get a trading recommendation")
         
         # ============================================================
         # AUTO-REFRESH LOGIC
