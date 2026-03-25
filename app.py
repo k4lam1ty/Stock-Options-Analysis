@@ -1,0 +1,479 @@
+import streamlit as st
+import yfinance as yf
+import pandas as pd
+import numpy as np
+from datetime import datetime
+from math import log, sqrt, exp
+from scipy.stats import norm
+import time
+
+st.set_page_config(page_title="Stock Analysis Dashboard", layout="wide")
+
+st.title("📈 Stock Analysis Dashboard")
+st.markdown("---")
+
+# Function to get current risk-free rate (10-Year Treasury Yield)
+def get_risk_free_rate():
+    """
+    Fetch current 10-Year Treasury Yield from Yahoo Finance
+    Ticker: ^TNX (10-Year Treasury Note Yield)
+    """
+    try:
+        treasury = yf.Ticker("^TNX")
+        info = treasury.info
+        rate = info.get('regularMarketPrice', info.get('previousClose', 4.5))
+        return rate / 100  # Convert from percentage to decimal
+    except:
+        return 0.045  # 4.5% default
+
+# Function to get dividend yield for a specific ticker
+def get_dividend_yield(ticker):
+    """
+    Fetch dividend yield for a specific stock from Yahoo Finance
+    """
+    try:
+        stock = yf.Ticker(ticker)
+        info = stock.info
+        dividend_yield = info.get('dividendYield', 0)
+        if dividend_yield:
+            return dividend_yield  # Already in decimal format
+        else:
+            # Try to get from trailing annual dividend rate
+            dividend_rate = info.get('dividendRate', 0)
+            current_price = info.get('currentPrice', info.get('regularMarketPrice', 0))
+            if dividend_rate and current_price:
+                return dividend_rate / current_price
+            return 0
+    except:
+        return 0
+
+# Get initial risk-free rate
+initial_rate = get_risk_free_rate()
+
+# Sidebar for inputs
+with st.sidebar:
+    st.header("🔍 Input")
+    ticker = st.text_input("Stock / Index Ticker:", "SPY").upper()
+    
+    # Help text
+    st.caption("Examples: Stocks: AAPL, MSFT, GME | Indices: SPY, QQQ, DIA, IWM, VIX")
+    
+    st.markdown("---")
+    st.header("💰 Rates")
+    
+    # Auto-fetch risk-free rate toggle
+    auto_rate = st.checkbox("Auto-fetch Risk-Free Rate (10-Year Treasury)", value=True)
+    
+    if auto_rate:
+        risk_free_rate = get_risk_free_rate()
+        st.success(f"📊 10-Year Treasury Yield: {risk_free_rate*100:.2f}%")
+        st.caption("Auto-updates from Treasury market")
+        
+        manual_override = st.checkbox("Manually override risk-free rate", value=False)
+        if manual_override:
+            manual_rate = st.number_input("Manual Risk-Free Rate (%):", value=risk_free_rate*100, step=0.1) / 100
+            risk_free_rate = manual_rate
+            st.info(f"Using manual rate: {risk_free_rate*100:.2f}%")
+    else:
+        risk_free_rate = st.number_input("Risk-Free Rate (%):", value=4.5, step=0.1) / 100
+        st.caption("Manually entered rate")
+    
+    st.markdown("---")
+    st.header("📊 Dividend Yield")
+    
+    # Dividend yield will be auto-fetched when ticker is entered
+    st.caption("Automatically fetches from Yahoo Finance for selected stock")
+    
+    st.markdown("---")
+    st.header("⚙️ Options Calculator")
+    strike = st.number_input("Strike Price:", value=100.0, step=1.0)
+    days = st.number_input("Days to Expiration:", value=30, step=1)
+    option_type = st.selectbox("Option Type:", ["Call", "Put"])
+    
+    st.markdown("---")
+    st.header("🔄 Auto-Refresh")
+    auto_refresh = st.checkbox("Auto-refresh data (every 30 seconds)", value=True)
+    
+    if auto_refresh:
+        st.caption(f"🔄 Last update: {datetime.now().strftime('%H:%M:%S')}")
+    
+    st.markdown("---")
+    st.caption("📌 **Risk-Free Rate:** 10-Year Treasury (^TNX)")
+    st.caption("📌 **Dividend Yield:** Auto-fetched from Yahoo Finance")
+
+# TradingView Chart with Account Link
+def tradingview_full_chart(ticker, timeframe="D"):
+    chart_html = f"""
+    <!-- TradingView Widget BEGIN -->
+    <div class="tradingview-widget-container">
+        <div id="tradingview_full_chart"></div>
+        <script type="text/javascript" src="https://s3.tradingview.com/tv.js"></script>
+        <script type="text/javascript">
+        new TradingView.widget(
+        {{
+            "width": "100%",
+            "height": 700,
+            "symbol": "{ticker}",
+            "interval": "{timeframe}",
+            "timezone": "America/New_York",
+            "theme": "dark",
+            "style": "1",
+            "locale": "en",
+            "toolbar_bg": "#f1f3f6",
+            "enable_publishing": true,
+            "allow_symbol_change": true,
+            "save_image": true,
+            "calendar": true,
+            "container_id": "tradingview_full_chart",
+            "studies": [
+                "MASimple@tv-basicstudies",
+                "RSI@tv-basicstudies",
+                "MACD@tv-basicstudies"
+            ],
+            "withdateranges": true,
+            "hide_side_toolbar": false,
+            "show_popup_button": true,
+            "popup_width": "1000",
+            "popup_height": "650",
+            "loading_screen": {{ "backgroundColor": "#1e1e2e" }}
+        }}
+        );
+        </script>
+    </div>
+    <!-- TradingView Widget END -->
+    """
+    return st.components.v1.html(chart_html, height=750)
+
+def tradingview_direct_link(ticker):
+    tv_url = f"https://www.tradingview.com/chart/?symbol={ticker}"
+    return tv_url
+
+def is_index(ticker):
+    index_tickers = ['SPY', 'QQQ', 'DIA', 'IWM', 'VIX', 'VOO', 'IVV', 'TLT', 'AGG', 'BND', 'GLD', 'SLV']
+    return ticker.upper() in [x.upper() for x in index_tickers]
+
+def get_stock_data(ticker):
+    stock = yf.Ticker(ticker)
+    info = stock.info
+    hist = stock.history(period='1y')
+    
+    if not is_index(ticker):
+        balance_sheet = stock.balance_sheet
+        income_statement = stock.financials
+        cashflow = stock.cashflow
+    else:
+        balance_sheet = pd.DataFrame()
+        income_statement = pd.DataFrame()
+        cashflow = pd.DataFrame()
+    
+    return {
+        'info': info,
+        'hist': hist,
+        'balance_sheet': balance_sheet,
+        'income_statement': income_statement,
+        'cashflow': cashflow,
+        'is_index': is_index(ticker)
+    }
+
+if ticker:
+    try:
+        # Fetch all data
+        with st.spinner(f"Loading data for {ticker}..."):
+            data = get_stock_data(ticker)
+            info = data['info']
+            hist = data['hist']
+            balance_sheet = data['balance_sheet']
+            income_statement = data['income_statement']
+            cashflow = data['cashflow']
+            is_index_ticker = data['is_index']
+        
+        # Get dividend yield for the selected ticker
+        dividend_yield = get_dividend_yield(ticker)
+        
+        # Get current price and metrics
+        current_price = info.get('currentPrice', info.get('regularMarketPrice', 0))
+        previous_close = info.get('previousClose', 0)
+        price_change = current_price - previous_close
+        price_change_pct = (price_change / previous_close * 100) if previous_close else 0
+        
+        # Calculate 6-month return
+        hist_6mo = hist.tail(130)
+        if len(hist_6mo) > 1:
+            six_month_return = ((hist_6mo['Close'].iloc[-1] - hist_6mo['Close'].iloc[0]) / hist_6mo['Close'].iloc[0]) * 100
+        else:
+            six_month_return = 0
+        
+        # Calculate volatility
+        if len(hist) > 20:
+            daily_returns = hist['Close'].pct_change().dropna()
+            volatility = daily_returns.std() * (252 ** 0.5) * 100
+        else:
+            volatility = 30
+        
+        def calculate_rsi(data, window=14):
+            delta = data.diff()
+            gain = (delta.where(delta > 0, 0)).rolling(window=window).mean()
+            loss = (-delta.where(delta < 0, 0)).rolling(window=window).mean()
+            rs = gain / loss
+            rsi = 100 - (100 / (1 + rs))
+            return rsi
+        
+        rsi = calculate_rsi(hist['Close'])
+        current_rsi = rsi.iloc[-1] if not rsi.empty else 50
+        
+        # ============================================================
+        # HEADER METRICS
+        # ============================================================
+        asset_type = "Index/ETF" if is_index_ticker else "Stock"
+        st.subheader(f"📊 {ticker} - {info.get('longName', ticker)} ({asset_type})")
+        
+        col1, col2, col3, col4, col5, col6 = st.columns(6)
+        with col1:
+            st.metric("Current Price", f"${current_price:.2f}", 
+                     delta=f"{price_change:+.2f} ({price_change_pct:+.1f}%)")
+        with col2:
+            st.metric("Day High", f"${info.get('dayHigh', 0):.2f}")
+        with col3:
+            st.metric("Day Low", f"${info.get('dayLow', 0):.2f}")
+        with col4:
+            st.metric("52-Week High", f"${info.get('fiftyTwoWeekHigh', 0):.2f}")
+        with col5:
+            st.metric("52-Week Low", f"${info.get('fiftyTwoWeekLow', 0):.2f}")
+        with col6:
+            st.metric("Volume", f"{info.get('volume', 0):,}")
+        
+        st.markdown("---")
+        
+        # Second row metrics
+        col1, col2, col3, col4, col5 = st.columns(5)
+        with col1:
+            pe = info.get('trailingPE', 0)
+            st.metric("P/E Ratio", f"{pe:.2f}" if pe else "N/A")
+        with col2:
+            st.metric("6-Month Return", f"{six_month_return:.1f}%")
+        with col3:
+            st.metric("Volatility", f"{volatility:.1f}%")
+        with col4:
+            st.metric("RSI (14)", f"{current_rsi:.1f}")
+        with col5:
+            if not is_index_ticker:
+                st.metric("Dividend Yield", f"{dividend_yield*100:.2f}%" if dividend_yield > 0 else "N/A")
+            else:
+                st.metric("Dividend Yield", "N/A (Index)")
+        
+        st.markdown("---")
+        
+        # ============================================================
+        # RATES DISPLAY
+        # ============================================================
+        col1, col2, col3 = st.columns(3)
+        with col1:
+            st.metric("Risk-Free Rate (10-Year Treasury)", f"{risk_free_rate*100:.2f}%")
+        with col2:
+            if not is_index_ticker:
+                st.metric(f"Dividend Yield - {ticker}", f"{dividend_yield*100:.2f}%" if dividend_yield > 0 else "N/A")
+            else:
+                st.metric(f"Dividend Yield - {ticker}", "Not applicable")
+        with col3:
+            st.metric("Updated", datetime.now().strftime('%H:%M:%S'))
+        
+        st.markdown("---")
+        
+        # ============================================================
+        # TRADINGVIEW CHART
+        # ============================================================
+        st.subheader("📉 TradingView Chart")
+        
+        chart_option = st.radio(
+            "Choose Chart Mode:",
+            ["Embedded Chart (View Only)", "Launch Full TradingView (Save Drawings)"],
+            horizontal=True
+        )
+        
+        if chart_option == "Launch Full TradingView (Save Drawings)":
+            tv_link = tradingview_direct_link(ticker)
+            st.markdown(f"""
+            <div style="text-align: center; padding: 40px; background-color: #1e1e2e; border-radius: 10px; border: 1px solid #89b4fa;">
+                <h3>📈 Open TradingView for Full Analysis</h3>
+                <p style="font-size: 16px; margin: 20px 0;">
+                    Click the button below to open TradingView in a new tab.<br>
+                    <strong>Your drawings will be saved to your TradingView account!</strong>
+                </p>
+                <a href="{tv_link}" target="_blank">
+                    <button style="background-color: #89b4fa; color: #1e1e2e; padding: 12px 30px; font-size: 16px; border: none; border-radius: 5px; cursor: pointer; font-weight: bold;">
+                        🚀 Launch TradingView for {ticker}
+                    </button>
+                </a>
+                <p style="font-size: 12px; margin-top: 20px;">
+                    Tip: Create a free TradingView account to save your drawings and layouts
+                </p>
+            </div>
+            """, unsafe_allow_html=True)
+        else:
+            timeframe_options = {
+                "1 Minute": "1",
+                "5 Minutes": "5",
+                "15 Minutes": "15",
+                "30 Minutes": "30",
+                "1 Hour": "60",
+                "4 Hours": "240",
+                "Daily": "D",
+                "Weekly": "W",
+                "Monthly": "M"
+            }
+            
+            selected_timeframe = st.selectbox("Select Timeframe:", list(timeframe_options.keys()))
+            timeframe_value = timeframe_options[selected_timeframe]
+            
+            tradingview_full_chart(ticker, timeframe_value)
+            st.caption("📌 **Note:** Drawings made in this embedded chart will NOT be saved. For saved drawings, use the 'Launch Full TradingView' option above with a free account.")
+        
+        st.markdown("---")
+        
+        # ============================================================
+        # COMPANY/INDEX INFORMATION
+        # ============================================================
+        col1, col2 = st.columns(2)
+        
+        with col1:
+            st.subheader("🏢 Asset Information")
+            st.write(f"**Name:** {info.get('longName', 'N/A')}")
+            if not is_index_ticker:
+                st.write(f"**Sector:** {info.get('sector', 'N/A')}")
+                st.write(f"**Industry:** {info.get('industry', 'N/A')}")
+            st.write(f"**Country:** {info.get('country', 'N/A')}")
+            st.write(f"**Asset Type:** {asset_type}")
+            st.write(f"**Volume:** {info.get('volume', 0):,}")
+        
+        with col2:
+            st.subheader("📈 Key Metrics")
+            if not is_index_ticker:
+                st.write(f"**P/E Ratio:** {info.get('trailingPE', 0):.2f}")
+                st.write(f"**Forward P/E:** {info.get('forwardPE', 0):.2f}")
+                st.write(f"**Price/Book:** {info.get('priceToBook', 0):.2f}")
+                st.write(f"**Dividend Yield:** {dividend_yield*100:.2f}%" if dividend_yield > 0 else "N/A")
+            st.write(f"**Beta:** {info.get('beta', 'N/A')}")
+        
+        st.markdown("---")
+        
+        # ============================================================
+        # FINANCIAL STATEMENTS (Only for Stocks)
+        # ============================================================
+        if not is_index_ticker:
+            st.subheader("💰 Key Financials (in Millions)")
+            
+            if not income_statement.empty:
+                latest_income = income_statement.iloc[:, 0] if len(income_statement.columns) > 0 else None
+                if latest_income is not None:
+                    total_revenue = latest_income.get('Total Revenue', info.get('totalRevenue', 0))
+                    gross_profit = latest_income.get('Gross Profit', info.get('grossProfit', 0))
+                    net_income = latest_income.get('Net Income', info.get('netIncomeToCommon', 0))
+                else:
+                    total_revenue = info.get('totalRevenue', 0)
+                    gross_profit = info.get('grossProfit', 0)
+                    net_income = info.get('netIncomeToCommon', 0)
+            else:
+                total_revenue = info.get('totalRevenue', 0)
+                gross_profit = info.get('grossProfit', 0)
+                net_income = info.get('netIncomeToCommon', 0)
+            
+            if not balance_sheet.empty:
+                latest_balance = balance_sheet.iloc[:, 0] if len(balance_sheet.columns) > 0 else None
+                if latest_balance is not None:
+                    total_assets = latest_balance.get('Total Assets', info.get('totalAssets', 0))
+                    total_debt = latest_balance.get('Total Debt', info.get('totalDebt', 0))
+                    total_equity = latest_balance.get('Total Equity Gross Minority Interest', 
+                                                      latest_balance.get('Stockholders Equity', 
+                                                      info.get('totalShareholderEquity', 0)))
+                else:
+                    total_assets = info.get('totalAssets', 0)
+                    total_debt = info.get('totalDebt', 0)
+                    total_equity = info.get('totalShareholderEquity', 0)
+            else:
+                total_assets = info.get('totalAssets', 0)
+                total_debt = info.get('totalDebt', 0)
+                total_equity = info.get('totalShareholderEquity', 0)
+            
+            financials = {
+                "Total Revenue": total_revenue / 1e6 if total_revenue else 0,
+                "Gross Profit": gross_profit / 1e6 if gross_profit else 0,
+                "Net Income": net_income / 1e6 if net_income else 0,
+                "Total Assets": total_assets / 1e6 if total_assets else 0,
+                "Total Debt": total_debt / 1e6 if total_debt else 0,
+                "Total Equity": total_equity / 1e6 if total_equity else 0,
+            }
+            
+            df = pd.DataFrame(list(financials.items()), columns=["Metric", "Value ($M)"])
+            df["Value ($M)"] = df["Value ($M)"].apply(lambda x: f"{x:,.2f}" if x > 0 else "N/A")
+            st.dataframe(df, use_container_width=True, hide_index=True)
+        else:
+            st.info("📊 Financial statements are not available for indices or ETFs. Use the TradingView chart for technical analysis.")
+        
+        st.markdown("---")
+        
+        # ============================================================
+        # OPTIONS CALCULATOR
+        # ============================================================
+        st.subheader("🎯 Options Price Calculator (Black-Scholes)")
+        
+        col1, col2, col3 = st.columns(3)
+        with col1:
+            st.write(f"**Current Price:** ${current_price:.2f}")
+            st.write(f"**Strike Price:** ${strike:.2f}")
+            st.write(f"**Time to Expiration:** {days} days ({days/365:.4f} years)")
+        with col2:
+            st.write(f"**Volatility:** {volatility:.1f}%")
+            st.write(f"**Risk-Free Rate:** {risk_free_rate*100:.2f}%")
+            st.write(f"**Dividend Yield:** {dividend_yield*100:.2f}%")
+        with col3:
+            st.write(f"**Option Type:** {option_type}")
+        
+        # Black-Scholes calculation
+        S = current_price
+        K = strike
+        T = days / 365
+        r = risk_free_rate
+        v = volatility / 100
+        q = dividend_yield  # Auto-populated dividend yield
+        
+        if v > 0 and T > 0:
+            d1 = (log(S / K) + (r - q + v**2 / 2) * T) / (v * sqrt(T))
+            d2 = d1 - v * sqrt(T)
+            
+            if option_type == "Call":
+                option_price = S * exp(-q * T) * norm.cdf(d1) - K * exp(-r * T) * norm.cdf(d2)
+                delta = exp(-q * T) * norm.cdf(d1)
+                gamma = norm.pdf(d1) * exp(-q * T) / (S * v * sqrt(T))
+                theta = - (S * v * norm.pdf(d1) * exp(-q * T)) / (2 * sqrt(T)) - r * K * exp(-r * T) * norm.cdf(d2) + q * S * norm.cdf(d1) * exp(-q * T)
+                vega = S * sqrt(T) * norm.pdf(d1) * exp(-q * T) / 100
+            else:
+                option_price = K * exp(-r * T) * norm.cdf(-d2) - S * exp(-q * T) * norm.cdf(-d1)
+                delta = -exp(-q * T) * norm.cdf(-d1)
+                gamma = norm.pdf(d1) * exp(-q * T) / (S * v * sqrt(T))
+                theta = - (S * v * norm.pdf(d1) * exp(-q * T)) / (2 * sqrt(T)) + r * K * exp(-r * T) * norm.cdf(-d2) - q * S * norm.cdf(-d1) * exp(-q * T)
+                vega = S * sqrt(T) * norm.pdf(d1) * exp(-q * T) / 100
+            
+            st.markdown("---")
+            
+            col1, col2, col3, col4, col5 = st.columns(5)
+            with col1:
+                st.metric("Theoretical Price", f"${option_price:.2f}")
+            with col2:
+                st.metric("Delta", f"{delta:.4f}")
+            with col3:
+                st.metric("Gamma", f"{gamma:.4f}")
+            with col4:
+                st.metric("Theta (Daily)", f"{theta/365:.4f}")
+            with col5:
+                st.metric("Vega (per 1%)", f"{vega:.4f}")
+        
+        # Auto-refresh logic
+        if auto_refresh:
+            time.sleep(30)
+            st.rerun()
+        
+    except Exception as e:
+        st.error(f"Error fetching data for {ticker}: {e}")
+        st.info("Please check the ticker symbol and try again.")
+else:
+    st.info("Enter a stock or index ticker (e.g., AAPL, MSFT, SPY, QQQ, GME) in the sidebar to begin.")
