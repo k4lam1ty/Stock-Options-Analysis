@@ -10,6 +10,39 @@ import time
 st.set_page_config(page_title="Stock Analysis Dashboard", layout="wide")
 
 # ============================================================
+# FORMATTING FUNCTIONS
+# ============================================================
+
+def format_currency(value):
+    """Format number as currency with commas"""
+    if value is None or value == 0:
+        return "$0.00"
+    return f"${value:,.2f}"
+
+def format_number(value):
+    """Format number with commas (no decimals)"""
+    if value is None or value == 0:
+        return "0"
+    return f"{value:,.0f}"
+
+def format_percentage(value):
+    """Format percentage with commas"""
+    if value is None:
+        return "0%"
+    return f"{value:,.2f}%"
+
+def format_large_number(value):
+    """Format large numbers with abbreviations (M, B)"""
+    if value is None or value == 0:
+        return "$0"
+    if value >= 1_000_000_000:
+        return f"${value/1_000_000_000:,.2f}B"
+    elif value >= 1_000_000:
+        return f"${value/1_000_000:,.2f}M"
+    else:
+        return f"${value:,.2f}"
+
+# ============================================================
 # SESSION STATE FOR WATCHLIST
 # ============================================================
 if 'watchlist' not in st.session_state:
@@ -323,22 +356,24 @@ if ticker:
         current_rsi = rsi.iloc[-1] if not rsi.empty else 50
         asset_type = "Index/ETF" if is_index_ticker else "Stock"
         
-        # Header Metrics
+        # ============================================================
+        # HEADER METRICS (FORMATTED)
+        # ============================================================
         st.subheader(f"📊 {ticker} - {info.get('longName', ticker)} ({asset_type})")
         
         col1, col2, col3, col4, col5, col6 = st.columns(6)
         with col1:
-            st.metric("Current Price", f"${current_price:.2f}", delta=f"{price_change:+.2f} ({price_change_pct:+.1f}%)")
+            st.metric("Current Price", format_currency(current_price), delta=f"{price_change:+.2f} ({price_change_pct:+.1f}%)")
         with col2:
-            st.metric("Day High", f"${info.get('dayHigh', 0):.2f}")
+            st.metric("Day High", format_currency(info.get('dayHigh', 0)))
         with col3:
-            st.metric("Day Low", f"${info.get('dayLow', 0):.2f}")
+            st.metric("Day Low", format_currency(info.get('dayLow', 0)))
         with col4:
-            st.metric("52-Week High", f"${info.get('fiftyTwoWeekHigh', 0):.2f}")
+            st.metric("52-Week High", format_currency(info.get('fiftyTwoWeekHigh', 0)))
         with col5:
-            st.metric("52-Week Low", f"${info.get('fiftyTwoWeekLow', 0):.2f}")
+            st.metric("52-Week Low", format_currency(info.get('fiftyTwoWeekLow', 0)))
         with col6:
-            st.metric("Volume", f"{info.get('volume', 0):,}")
+            st.metric("Volume", format_number(info.get('volume', 0)))
         
         st.markdown("---")
         
@@ -347,14 +382,14 @@ if ticker:
             pe = info.get('trailingPE', 0)
             st.metric("P/E Ratio", f"{pe:.2f}" if pe else "N/A")
         with col2:
-            st.metric("6-Month Return", f"{six_month_return:.1f}%")
+            st.metric("6-Month Return", f"{six_month_return:+.1f}%")
         with col3:
             st.metric("Volatility", f"{volatility:.1f}%")
         with col4:
             st.metric("RSI (14)", f"{current_rsi:.1f}")
         with col5:
             if not is_index_ticker:
-                st.metric("Dividend Yield", f"{dividend_yield*100:.2f}%" if dividend_yield > 0 else "N/A")
+                st.metric("Dividend Yield", format_percentage(dividend_yield*100) if dividend_yield > 0 else "N/A")
             else:
                 st.metric("Dividend Yield", "N/A")
         
@@ -370,7 +405,9 @@ if ticker:
         
         st.markdown("---")
         
-        # Earnings Calendar
+        # ============================================================
+        # EARNINGS CALENDAR
+        # ============================================================
         if not is_index_ticker:
             st.subheader("📅 Earnings Calendar")
             next_earnings = get_next_earnings(ticker)
@@ -398,7 +435,9 @@ if ticker:
                     st.info("Historical earnings data not available")
             st.markdown("---")
         
-        # TradingView Chart
+        # ============================================================
+        # TRADINGVIEW CHART
+        # ============================================================
         st.subheader("📉 TradingView Chart")
         chart_option = st.radio("Choose Chart Mode:", ["Embedded Chart (View Only)", "Launch Full TradingView (Save Drawings)"], horizontal=True)
         chart_theme = "dark" if theme == "Dark" else "light"
@@ -420,7 +459,9 @@ if ticker:
         
         st.markdown("---")
         
-        # Company Information
+        # ============================================================
+        # COMPANY INFORMATION (FORMATTED)
+        # ============================================================
         col1, col2 = st.columns(2)
         with col1:
             st.subheader("🏢 Asset Information")
@@ -430,19 +471,23 @@ if ticker:
                 st.write(f"**Industry:** {info.get('industry', 'N/A')}")
             st.write(f"**Country:** {info.get('country', 'N/A')}")
             st.write(f"**Asset Type:** {asset_type}")
-            st.write(f"**Volume:** {info.get('volume', 0):,}")
+            st.write(f"**Volume:** {format_number(info.get('volume', 0))}")
+            st.write(f"**Market Cap:** {format_large_number(info.get('marketCap', 0))}")
+        
         with col2:
             st.subheader("📈 Key Metrics")
             if not is_index_ticker:
                 st.write(f"**P/E Ratio:** {info.get('trailingPE', 0):.2f}")
                 st.write(f"**Forward P/E:** {info.get('forwardPE', 0):.2f}")
                 st.write(f"**Price/Book:** {info.get('priceToBook', 0):.2f}")
-                st.write(f"**Dividend Yield:** {dividend_yield*100:.2f}%" if dividend_yield > 0 else "N/A")
+                st.write(f"**Dividend Yield:** {format_percentage(dividend_yield*100) if dividend_yield > 0 else 'N/A'}")
             st.write(f"**Beta:** {info.get('beta', 'N/A')}")
         
         st.markdown("---")
         
-        # Financial Statements
+        # ============================================================
+        # FINANCIAL STATEMENTS (FORMATTED)
+        # ============================================================
         if not is_index_ticker and not income_statement.empty:
             st.subheader("💰 Key Financials (in Millions)")
             latest_income = income_statement.iloc[:, 0] if len(income_statement.columns) > 0 else None
@@ -479,23 +524,25 @@ if ticker:
                 "Total Equity": total_equity / 1e6 if total_equity else 0,
             }
             df = pd.DataFrame(list(financials.items()), columns=["Metric", "Value ($M)"])
-            df["Value ($M)"] = df["Value ($M)"].apply(lambda x: f"{x:,.2f}" if x > 0 else "N/A")
+            df["Value ($M)"] = df["Value ($M)"].apply(lambda x: f"${x:,.2f}M" if x > 0 else "N/A")
             st.dataframe(df, use_container_width=True, hide_index=True)
             st.markdown("---")
         
-        # Options Calculator
+        # ============================================================
+        # OPTIONS CALCULATOR
+        # ============================================================
         if days > 0:
             st.subheader("🎯 Options Price Calculator (Black-Scholes)")
             
             col1, col2, col3 = st.columns(3)
             with col1:
-                st.write(f"**Current Price:** ${current_price:.2f}")
-                st.write(f"**Strike Price:** ${strike:.2f}")
+                st.write(f"**Current Price:** {format_currency(current_price)}")
+                st.write(f"**Strike Price:** {format_currency(strike)}")
                 st.write(f"**Expiration:** {expiration_date.strftime('%Y-%m-%d')} ({days} days)")
             with col2:
                 st.write(f"**Volatility:** {volatility:.1f}%")
                 st.write(f"**Risk-Free Rate:** {risk_free_rate*100:.2f}%")
-                st.write(f"**Dividend Yield:** {dividend_yield*100:.2f}%")
+                st.write(f"**Dividend Yield:** {format_percentage(dividend_yield*100)}")
             with col3:
                 st.write(f"**Option Type:** {option_type}")
             
@@ -526,7 +573,7 @@ if ticker:
                 st.markdown("---")
                 col1, col2, col3, col4, col5 = st.columns(5)
                 with col1:
-                    st.metric("Theoretical Price", f"${option_price:.2f}")
+                    st.metric("Theoretical Price", format_currency(option_price))
                 with col2:
                     st.metric("Delta", f"{delta:.4f}")
                 with col3:
@@ -536,7 +583,9 @@ if ticker:
                 with col5:
                     st.metric("Vega (per 1%)", f"{vega:.4f}")
                 
-                # Probability Calculator
+                # ============================================================
+                # PROBABILITY CALCULATOR
+                # ============================================================
                 st.markdown("---")
                 st.subheader("📊 Probability Calculator")
                 
@@ -547,18 +596,18 @@ if ticker:
                     if target_price > current_price:
                         z_score = (log(target_price / current_price)) / (volatility / 100 * sqrt(days/365))
                         prob_up = norm.cdf(z_score) * 100
-                        st.metric(f"Probability to reach ${target_price:.0f}", f"{prob_up:.1f}%")
+                        st.metric(f"Probability to reach {format_currency(target_price)}", f"{prob_up:.1f}%")
                     elif target_price < current_price:
                         z_score = (log(current_price / target_price)) / (volatility / 100 * sqrt(days/365))
                         prob_down = norm.cdf(z_score) * 100
-                        st.metric(f"Probability to reach ${target_price:.0f}", f"{prob_down:.1f}%")
+                        st.metric(f"Probability to reach {format_currency(target_price)}", f"{prob_down:.1f}%")
                     else:
                         st.info("Enter a different target price")
                 
                 with col2:
                     st.write("**Expected Move**")
                     expected_move = current_price * (volatility / 100) * sqrt(days/365)
-                    st.metric("Expected Move (±)", f"${expected_move:.2f}")
+                    st.metric("Expected Move (±)", format_currency(expected_move))
                     st.caption(f"Based on {volatility:.0f}% volatility over {days} days")
                     if option_type == "Call":
                         prob_itm = norm.cdf(d2) * 100
@@ -566,7 +615,9 @@ if ticker:
                         prob_itm = norm.cdf(-d2) * 100
                     st.metric("Probability ITM at Expiration", f"{prob_itm:.1f}%")
                 
-                # Trading Signal Section
+                # ============================================================
+                # TRADING SIGNAL & RECOMMENDATION SECTION
+                # ============================================================
                 st.markdown("---")
                 st.subheader("📊 Trading Signal & Recommendation")
                 
@@ -578,7 +629,7 @@ if ticker:
                     if market_price_input is not None and market_price_input > 0 and option_price > 0:
                         price_diff = market_price_input - option_price
                         diff_percent = (price_diff / option_price * 100)
-                        st.metric("Price Difference", f"${price_diff:.2f}", delta=f"{diff_percent:+.1f}%", delta_color="normal")
+                        st.metric("Price Difference", format_currency(price_diff), delta=f"{diff_percent:+.1f}%", delta_color="normal")
                     else:
                         st.info("Enter market price to see difference")
                         price_diff = 0
@@ -626,10 +677,12 @@ if ticker:
                     col1, col2, col3 = st.columns(3)
                     with col1:
                         st.write("**Price Comparison**")
-                        st.write(f"📊 Theoretical: **${option_price:.2f}**")
-                        st.write(f"💵 Market: **${market_price_input:.2f}**")
+                        st.write(f"📊 Theoretical: **{format_currency(option_price)}**")
+                        st.write(f"💵 Market: **{format_currency(market_price_input)}**")
                         if market_price_input < option_price:
-                            st.write(f"💰 Discount: **${option_price - market_price_input:.2f}** ({(option_price - market_price_input)/option_price*100:.0f}%)")
+                            discount = option_price - market_price_input
+                            discount_pct = discount / option_price * 100
+                            st.write(f"💰 Discount: **{format_currency(discount)}** ({discount_pct:.0f}%)")
                     with col2:
                         st.write("**Profit Scenarios**")
                         if market_price_input < option_price:
@@ -639,22 +692,24 @@ if ticker:
                         st.write("**Suggested Trade**")
                         if "BUY" in recommendation:
                             st.write("✅ **BUY** this option")
-                            st.write(f"💰 Risk per contract: **${market_price_input * 100:.2f}**")
+                            st.write(f"💰 Risk per contract: **{format_currency(market_price_input * 100)}**")
                         elif "SELL" in recommendation:
                             st.write("❌ **AVOID** buying")
                         else:
                             st.write("⏸️ **WAIT** for better price")
                     
-                    # Position Size Calculator
+                    # ============================================================
+                    # POSITION SIZE CALCULATOR (FORMATTED)
+                    # ============================================================
                     with st.expander("💰 Position Size Calculator"):
                         account_size = st.number_input("Account Size ($):", value=10000, step=1000, key="account_size")
                         risk_percent = st.number_input("Risk Per Trade (%):", value=2.0, step=0.5, key="risk_percent") / 100
                         max_risk = account_size * risk_percent
-                        st.metric("Max Risk per Trade", f"${max_risk:.2f}")
+                        st.metric("Max Risk per Trade", format_currency(max_risk))
                         if market_price_input and market_price_input > 0:
                             contracts = int(max_risk / (market_price_input * 100))
                             st.metric("Max Contracts", contracts)
-                            st.metric("Total Risk", f"${contracts * market_price_input * 100:.2f}")
+                            st.metric("Total Risk", format_currency(contracts * market_price_input * 100))
                             if contracts > 0:
                                 st.success(f"✅ Recommended: Buy **{contracts} contract(s)**")
                             else:
@@ -664,34 +719,10 @@ if ticker:
         else:
             st.error("Please select a future expiration date")
         
-        # Real-Time News
+        # ============================================================
+        # REAL-TIME NEWS
+        # ============================================================
         st.markdown("---")
         st.subheader("📰 Real-Time News")
         news = get_news(ticker)
-        if news:
-            for i, article in enumerate(news[:10]):
-                title = article.get('title', 'No title')
-                link = article.get('link', '#')
-                publisher = article.get('publisher', 'Unknown')
-                pub_date = article.get('providerPublishTime', None)
-                date_str = datetime.fromtimestamp(pub_date).strftime('%Y-%m-%d %H:%M') if pub_date else "Recently"
-                st.markdown(f"**{i+1}. [{title}]({link})**")
-                st.caption(f"📰 {publisher} | 🕐 {date_str}")
-                st.markdown("---")
-        else:
-            st.info(f"No recent news found for {ticker}")
-        
-        # Auto-refresh logic
-        if auto_refresh:
-            time.sleep(interval_seconds)
-            st.rerun()
-        
-    except Exception as e:
-        if "Too Many Requests" in str(e) or "Rate limited" in str(e):
-            st.error("⚠️ **Rate Limit Exceeded**")
-            st.info("Yahoo Finance has temporarily limited your requests. Turn OFF auto-refresh, wait 10-15 minutes, then refresh manually.")
-        else:
-            st.error(f"Error fetching data for {ticker}: {e}")
-            st.info("Please check the ticker symbol and try again.")
-else:
-    st.info("Enter a stock or index ticker (e.g., AAPL, MSFT, SPY, QQQ, GME) in the sidebar to begin.")
+        if
