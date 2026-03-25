@@ -2,7 +2,7 @@ import streamlit as st
 import yfinance as yf
 import pandas as pd
 import numpy as np
-from datetime import datetime
+from datetime import datetime, date
 from math import log, sqrt, exp
 from scipy.stats import norm
 import time
@@ -155,8 +155,25 @@ with st.sidebar:
     
     st.markdown("---")
     st.header("⚙️ Options Calculator")
+    
+    # Date picker for expiration
+    expiration_date = st.date_input(
+        "Expiration Date:",
+        value=date.today(),
+        min_value=date.today(),
+        help="Select the option's expiration date"
+    )
+    
+    # Calculate days to expiration
+    today = date.today()
+    if expiration_date >= today:
+        days = (expiration_date - today).days
+        st.caption(f"📅 Days to Expiration: **{days} days**")
+    else:
+        days = 0
+        st.error("Expiration date must be in the future")
+    
     strike = st.number_input("Strike Price:", value=100.0, step=1.0)
-    days = st.number_input("Days to Expiration:", value=30, step=1)
     option_type = st.selectbox("Option Type:", ["Call", "Put"])
     
     st.markdown("---")
@@ -367,191 +384,191 @@ if ticker:
         # ============================================================
         st.subheader("🎯 Options Price Calculator (Black-Scholes)")
         
-        col1, col2, col3 = st.columns(3)
-        with col1:
-            st.write(f"**Current Price:** ${current_price:.2f}")
-            st.write(f"**Strike Price:** ${strike:.2f}")
-            st.write(f"**Time to Expiration:** {days} days ({days/365:.4f} years)")
-        with col2:
-            st.write(f"**Volatility:** {volatility:.1f}%")
-            st.write(f"**Risk-Free Rate:** {risk_free_rate*100:.2f}%")
-            st.write(f"**Dividend Yield:** {dividend_yield*100:.2f}%")
-        with col3:
-            st.write(f"**Option Type:** {option_type}")
-        
-        S = current_price
-        K = strike
-        T = days / 365
-        r = risk_free_rate
-        v = volatility / 100
-        q = dividend_yield
-        
-        if v > 0 and T > 0:
-            d1 = (log(S / K) + (r - q + v**2 / 2) * T) / (v * sqrt(T))
-            d2 = d1 - v * sqrt(T)
-            
-            if option_type == "Call":
-                option_price = S * exp(-q * T) * norm.cdf(d1) - K * exp(-r * T) * norm.cdf(d2)
-                delta = exp(-q * T) * norm.cdf(d1)
-                gamma = norm.pdf(d1) * exp(-q * T) / (S * v * sqrt(T))
-                theta = - (S * v * norm.pdf(d1) * exp(-q * T)) / (2 * sqrt(T)) - r * K * exp(-r * T) * norm.cdf(d2) + q * S * norm.cdf(d1) * exp(-q * T)
-                vega = S * sqrt(T) * norm.pdf(d1) * exp(-q * T) / 100
-            else:
-                option_price = K * exp(-r * T) * norm.cdf(-d2) - S * exp(-q * T) * norm.cdf(-d1)
-                delta = -exp(-q * T) * norm.cdf(-d1)
-                gamma = norm.pdf(d1) * exp(-q * T) / (S * v * sqrt(T))
-                theta = - (S * v * norm.pdf(d1) * exp(-q * T)) / (2 * sqrt(T)) + r * K * exp(-r * T) * norm.cdf(-d2) - q * S * norm.cdf(-d1) * exp(-q * T)
-                vega = S * sqrt(T) * norm.pdf(d1) * exp(-q * T) / 100
-            
-            st.markdown("---")
-            col1, col2, col3, col4, col5 = st.columns(5)
+        # Check if days is valid
+        if days > 0:
+            col1, col2, col3 = st.columns(3)
             with col1:
-                st.metric("Theoretical Price", f"${option_price:.2f}")
+                st.write(f"**Current Price:** ${current_price:.2f}")
+                st.write(f"**Strike Price:** ${strike:.2f}")
+                st.write(f"**Expiration:** {expiration_date.strftime('%Y-%m-%d')} ({days} days)")
             with col2:
-                st.metric("Delta", f"{delta:.4f}")
+                st.write(f"**Volatility:** {volatility:.1f}%")
+                st.write(f"**Risk-Free Rate:** {risk_free_rate*100:.2f}%")
+                st.write(f"**Dividend Yield:** {dividend_yield*100:.2f}%")
             with col3:
-                st.metric("Gamma", f"{gamma:.4f}")
-            with col4:
-                st.metric("Theta (Daily)", f"{theta/365:.4f}")
-            with col5:
-                st.metric("Vega (per 1%)", f"{vega:.4f}")
+                st.write(f"**Option Type:** {option_type}")
             
-            # ============================================================
-            # TRADING SIGNAL & RECOMMENDATION SECTION (FIXED)
-            # ============================================================
-            st.markdown("---")
-            st.subheader("📊 Trading Signal & Recommendation")
+            S = current_price
+            K = strike
+            T = days / 365
+            r = risk_free_rate
+            v = volatility / 100
+            q = dividend_yield
             
-            # Input for actual market price - FIXED: value=None so it doesn't auto-populate
-            col1, col2 = st.columns(2)
-            
-            with col1:
-                market_price = st.number_input(
-                    "Enter Actual Option Market Price ($):", 
-                    value=None,
-                    step=0.05,
-                    format="%.2f",
-                    help="Enter the current market price of the option from your broker"
-                )
-            
-            with col2:
-                # Calculate difference (only if market price is entered)
-                if market_price is not None and market_price > 0 and option_price > 0:
-                    price_diff = market_price - option_price
-                    diff_percent = (price_diff / option_price * 100)
-                    st.metric(
-                        "Price Difference", 
-                        f"${price_diff:.2f}", 
-                        delta=f"{diff_percent:+.1f}%",
-                        delta_color="normal"
-                    )
-                else:
-                    st.info("Enter market price to see difference")
-                    price_diff = 0
-                    diff_percent = 0
-            
-            # Create recommendation logic (only if market price is entered)
-            if market_price is not None and market_price > 0 and option_price > 0:
-                if diff_percent < -15:
-                    recommendation = "🔥 STRONG BUY"
-                    rec_color = "green"
-                    rec_reason = f"Option is significantly undervalued ({abs(diff_percent):.0f}% below theoretical value)"
-                    action = "Consider buying this option - market is underpricing this opportunity"
-                    risk_level = "HIGH" if diff_percent < -30 else "MODERATE"
-                elif diff_percent < -5:
-                    recommendation = "✅ BUY"
-                    rec_color = "lightgreen"
-                    rec_reason = f"Option is undervalued ({abs(diff_percent):.0f}% below theoretical value)"
-                    action = "Good opportunity to buy - market is offering a discount"
-                    risk_level = "LOW"
-                elif diff_percent > 15:
-                    recommendation = "⚠️ STRONG SELL"
-                    rec_color = "red"
-                    rec_reason = f"Option is significantly overvalued ({diff_percent:.0f}% above theoretical value)"
-                    action = "Consider selling or avoiding - market is overpricing this option"
-                    risk_level = "HIGH"
-                elif diff_percent > 5:
-                    recommendation = "❌ SELL / AVOID"
-                    rec_color = "orange"
-                    rec_reason = f"Option is overvalued ({diff_percent:.0f}% above theoretical value)"
-                    action = "Premium is expensive - consider selling or waiting for better entry"
-                    risk_level = "MODERATE"
-                else:
-                    recommendation = "⏸️ HOLD / MONITOR"
-                    rec_color = "yellow"
-                    rec_reason = f"Option is fairly priced ({abs(diff_percent):.0f}% from theoretical value)"
-                    action = "Wait for better opportunity or enter small position"
-                    risk_level = "LOW"
+            if v > 0 and T > 0:
+                d1 = (log(S / K) + (r - q + v**2 / 2) * T) / (v * sqrt(T))
+                d2 = d1 - v * sqrt(T)
                 
-                # Display recommendation card
-                st.markdown(f"""
-                <div style="background-color: #1e1e2e; border-radius: 10px; padding: 20px; border-left: 5px solid {'#a6e3a1' if 'BUY' in recommendation else '#f38ba8' if 'SELL' in recommendation else '#f9e2af'};">
-                    <h3 style="margin: 0; color: {'#a6e3a1' if 'BUY' in recommendation else '#f38ba8' if 'SELL' in recommendation else '#f9e2af'};">{recommendation}</h3>
-                    <p style="margin: 10px 0 5px 0;"><strong>Reason:</strong> {rec_reason}</p>
-                    <p style="margin: 5px 0;"><strong>Action:</strong> {action}</p>
-                    <p style="margin: 5px 0;"><strong>Risk Level:</strong> {risk_level}</p>
-                </div>
-                """, unsafe_allow_html=True)
+                if option_type == "Call":
+                    option_price = S * exp(-q * T) * norm.cdf(d1) - K * exp(-r * T) * norm.cdf(d2)
+                    delta = exp(-q * T) * norm.cdf(d1)
+                    gamma = norm.pdf(d1) * exp(-q * T) / (S * v * sqrt(T))
+                    theta = - (S * v * norm.pdf(d1) * exp(-q * T)) / (2 * sqrt(T)) - r * K * exp(-r * T) * norm.cdf(d2) + q * S * norm.cdf(d1) * exp(-q * T)
+                    vega = S * sqrt(T) * norm.pdf(d1) * exp(-q * T) / 100
+                else:
+                    option_price = K * exp(-r * T) * norm.cdf(-d2) - S * exp(-q * T) * norm.cdf(-d1)
+                    delta = -exp(-q * T) * norm.cdf(-d1)
+                    gamma = norm.pdf(d1) * exp(-q * T) / (S * v * sqrt(T))
+                    theta = - (S * v * norm.pdf(d1) * exp(-q * T)) / (2 * sqrt(T)) + r * K * exp(-r * T) * norm.cdf(-d2) - q * S * norm.cdf(-d1) * exp(-q * T)
+                    vega = S * sqrt(T) * norm.pdf(d1) * exp(-q * T) / 100
                 
-                # Additional metrics
                 st.markdown("---")
-                st.subheader("📈 Trade Analysis")
+                col1, col2, col3, col4, col5 = st.columns(5)
+                with col1:
+                    st.metric("Theoretical Price", f"${option_price:.2f}")
+                with col2:
+                    st.metric("Delta", f"{delta:.4f}")
+                with col3:
+                    st.metric("Gamma", f"{gamma:.4f}")
+                with col4:
+                    st.metric("Theta (Daily)", f"{theta/365:.4f}")
+                with col5:
+                    st.metric("Vega (per 1%)", f"{vega:.4f}")
                 
-                col1, col2, col3 = st.columns(3)
+                # ============================================================
+                # TRADING SIGNAL & RECOMMENDATION SECTION
+                # ============================================================
+                st.markdown("---")
+                st.subheader("📊 Trading Signal & Recommendation")
+                
+                # Input for actual market price
+                col1, col2 = st.columns(2)
                 
                 with col1:
-                    st.write("**Price Comparison**")
-                    st.write(f"📊 Theoretical: **${option_price:.2f}**")
-                    st.write(f"💵 Market: **${market_price:.2f}**")
-                    if market_price < option_price:
-                        st.write(f"💰 Discount: **${option_price - market_price:.2f}** ({(option_price - market_price)/option_price*100:.0f}%)")
-                    elif market_price > option_price:
-                        st.write(f"💸 Premium: **${market_price - option_price:.2f}** ({(market_price - option_price)/option_price*100:.0f}%)")
-                    else:
-                        st.write(f"⚖️ Fair Value")
+                    market_price = st.number_input(
+                        "Enter Actual Option Market Price ($):", 
+                        value=None,
+                        step=0.05,
+                        format="%.2f",
+                        help="Enter the current market price of the option from your broker"
+                    )
                 
                 with col2:
-                    st.write("**Profit Scenarios**")
-                    if market_price < option_price:
-                        potential_gain = (option_price - market_price) / market_price * 100
-                        st.write(f"📈 Upside to Fair Value: **+{potential_gain:.0f}%**")
-                        st.write(f"🎯 Target: **${option_price:.2f}**")
+                    if market_price is not None and market_price > 0 and option_price > 0:
+                        price_diff = market_price - option_price
+                        diff_percent = (price_diff / option_price * 100)
+                        st.metric(
+                            "Price Difference", 
+                            f"${price_diff:.2f}", 
+                            delta=f"{diff_percent:+.1f}%",
+                            delta_color="normal"
+                        )
                     else:
-                        st.write(f"⚠️ Currently overvalued by **{((market_price - option_price)/option_price*100):.0f}%**")
+                        st.info("Enter market price to see difference")
+                        price_diff = 0
+                        diff_percent = 0
                 
-                with col3:
-                    st.write("**Suggested Trade**")
-                    if "BUY" in recommendation:
-                        st.write("✅ **BUY** this option")
-                        st.write(f"💰 Risk per contract: **${market_price * 100:.2f}**")
-                    elif "SELL" in recommendation:
-                        st.write("❌ **AVOID** buying")
-                        st.write("💡 Consider selling if you own")
+                if market_price is not None and market_price > 0 and option_price > 0:
+                    if diff_percent < -15:
+                        recommendation = "🔥 STRONG BUY"
+                        rec_color = "green"
+                        rec_reason = f"Option is significantly undervalued ({abs(diff_percent):.0f}% below theoretical value)"
+                        action = "Consider buying this option - market is underpricing this opportunity"
+                        risk_level = "HIGH" if diff_percent < -30 else "MODERATE"
+                    elif diff_percent < -5:
+                        recommendation = "✅ BUY"
+                        rec_color = "lightgreen"
+                        rec_reason = f"Option is undervalued ({abs(diff_percent):.0f}% below theoretical value)"
+                        action = "Good opportunity to buy - market is offering a discount"
+                        risk_level = "LOW"
+                    elif diff_percent > 15:
+                        recommendation = "⚠️ STRONG SELL"
+                        rec_color = "red"
+                        rec_reason = f"Option is significantly overvalued ({diff_percent:.0f}% above theoretical value)"
+                        action = "Consider selling or avoiding - market is overpricing this option"
+                        risk_level = "HIGH"
+                    elif diff_percent > 5:
+                        recommendation = "❌ SELL / AVOID"
+                        rec_color = "orange"
+                        rec_reason = f"Option is overvalued ({diff_percent:.0f}% above theoretical value)"
+                        action = "Premium is expensive - consider selling or waiting for better entry"
+                        risk_level = "MODERATE"
                     else:
-                        st.write("⏸️ **WAIT** for better price")
-                        st.write("💡 Enter at fair value or below")
-                
-                st.markdown("---")
-                
-                # Optional trade notes
-                with st.expander("📝 Trade Notes & Checklist"):
-                    st.write("**Before entering the trade:**")
-                    st.write("- [ ] Verify the option chain (bid/ask spread)")
-                    st.write("- [ ] Check volume and open interest")
-                    st.write("- [ ] Confirm days to expiration")
-                    st.write("- [ ] Review your risk management rules")
-                    st.write("- [ ] Set a stop loss or profit target")
-                    st.write("- [ ] Consider position size (recommended: 1-2% of account)")
+                        recommendation = "⏸️ HOLD / MONITOR"
+                        rec_color = "yellow"
+                        rec_reason = f"Option is fairly priced ({abs(diff_percent):.0f}% from theoretical value)"
+                        action = "Wait for better opportunity or enter small position"
+                        risk_level = "LOW"
                     
-                    if market_price < option_price:
-                        st.success(f"✅ This option is undervalued by {abs(diff_percent):.0f}%")
-                        st.write(f"💡 Consider buying if the theoretical value of ${option_price:.2f} is realistic")
-                    elif market_price > option_price:
-                        st.warning(f"⚠️ This option is overvalued by {diff_percent:.0f}%")
-                        st.write(f"💡 Wait for the price to drop closer to ${option_price:.2f}")
+                    st.markdown(f"""
+                    <div style="background-color: #1e1e2e; border-radius: 10px; padding: 20px; border-left: 5px solid {'#a6e3a1' if 'BUY' in recommendation else '#f38ba8' if 'SELL' in recommendation else '#f9e2af'};">
+                        <h3 style="margin: 0; color: {'#a6e3a1' if 'BUY' in recommendation else '#f38ba8' if 'SELL' in recommendation else '#f9e2af'};">{recommendation}</h3>
+                        <p style="margin: 10px 0 5px 0;"><strong>Reason:</strong> {rec_reason}</p>
+                        <p style="margin: 5px 0;"><strong>Action:</strong> {action}</p>
+                        <p style="margin: 5px 0;"><strong>Risk Level:</strong> {risk_level}</p>
+                    </div>
+                    """, unsafe_allow_html=True)
+                    
+                    st.markdown("---")
+                    st.subheader("📈 Trade Analysis")
+                    
+                    col1, col2, col3 = st.columns(3)
+                    
+                    with col1:
+                        st.write("**Price Comparison**")
+                        st.write(f"📊 Theoretical: **${option_price:.2f}**")
+                        st.write(f"💵 Market: **${market_price:.2f}**")
+                        if market_price < option_price:
+                            st.write(f"💰 Discount: **${option_price - market_price:.2f}** ({(option_price - market_price)/option_price*100:.0f}%)")
+                        elif market_price > option_price:
+                            st.write(f"💸 Premium: **${market_price - option_price:.2f}** ({(market_price - option_price)/option_price*100:.0f}%)")
+                        else:
+                            st.write(f"⚖️ Fair Value")
+                    
+                    with col2:
+                        st.write("**Profit Scenarios**")
+                        if market_price < option_price:
+                            potential_gain = (option_price - market_price) / market_price * 100
+                            st.write(f"📈 Upside to Fair Value: **+{potential_gain:.0f}%**")
+                            st.write(f"🎯 Target: **${option_price:.2f}**")
+                        else:
+                            st.write(f"⚠️ Currently overvalued by **{((market_price - option_price)/option_price*100):.0f}%**")
+                    
+                    with col3:
+                        st.write("**Suggested Trade**")
+                        if "BUY" in recommendation:
+                            st.write("✅ **BUY** this option")
+                            st.write(f"💰 Risk per contract: **${market_price * 100:.2f}**")
+                        elif "SELL" in recommendation:
+                            st.write("❌ **AVOID** buying")
+                            st.write("💡 Consider selling if you own")
+                        else:
+                            st.write("⏸️ **WAIT** for better price")
+                            st.write("💡 Enter at fair value or below")
+                    
+                    st.markdown("---")
+                    
+                    with st.expander("📝 Trade Notes & Checklist"):
+                        st.write("**Before entering the trade:**")
+                        st.write("- [ ] Verify the option chain (bid/ask spread)")
+                        st.write("- [ ] Check volume and open interest")
+                        st.write("- [ ] Confirm expiration date")
+                        st.write("- [ ] Review your risk management rules")
+                        st.write("- [ ] Set a stop loss or profit target")
+                        st.write("- [ ] Consider position size (recommended: 1-2% of account)")
+                        
+                        if market_price < option_price:
+                            st.success(f"✅ This option is undervalued by {abs(diff_percent):.0f}%")
+                            st.write(f"💡 Consider buying if the theoretical value of ${option_price:.2f} is realistic")
+                        elif market_price > option_price:
+                            st.warning(f"⚠️ This option is overvalued by {diff_percent:.0f}%")
+                            st.write(f"💡 Wait for the price to drop closer to ${option_price:.2f}")
 
-            else:
-                st.info("📝 Enter the actual option market price above to get a trading recommendation")
+                else:
+                    st.info("📝 Enter the actual option market price above to get a trading recommendation")
+        
+        else:
+            st.error("Please select a future expiration date")
         
         # ============================================================
         # AUTO-REFRESH LOGIC
