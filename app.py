@@ -725,4 +725,43 @@ if ticker:
         st.markdown("---")
         st.subheader("📰 Real-Time News")
         news = get_news(ticker)
-        if
+        if news:
+            for i, article in enumerate(news[:10]):
+                title = article.get('title', 'No title')
+                link = article.get('link', '#')
+                publisher = article.get('publisher', 'Unknown')
+                pub_date = article.get('providerPublishTime', None)
+                date_str = datetime.fromtimestamp(pub_date).strftime('%Y-%m-%d %H:%M') if pub_date else "Recently"
+                st.markdown(f"**{i+1}. [{title}]({link})**")
+                st.caption(f"📰 {publisher} | 🕐 {date_str}")
+                st.markdown("---")
+        else:
+            st.info(f"No recent news found for {ticker}")
+        
+        # ============================================================
+        # AUTO-REFRESH LOGIC
+        # ============================================================
+        if auto_refresh:
+            time.sleep(interval_seconds)
+            st.rerun()
+        
+    except Exception as e:
+        if "Too Many Requests" in str(e) or "Rate limited" in str(e):
+            st.error("⚠️ **Rate Limit Exceeded**")
+            st.info("""
+            Yahoo Finance has temporarily limited your requests.
+            
+            **What to do:**
+            - Turn OFF auto-refresh in the sidebar
+            - Wait 10-15 minutes
+            - Refresh manually (F5)
+            
+            **To prevent this:**
+            - Keep auto-refresh OFF
+            - Use manual refresh sparingly
+            """)
+        else:
+            st.error(f"Error fetching data for {ticker}: {e}")
+            st.info("Please check the ticker symbol and try again.")
+else:
+    st.info("Enter a stock or index ticker (e.g., AAPL, MSFT, SPY, QQQ, GME) in the sidebar to begin.")
