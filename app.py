@@ -6,7 +6,6 @@ from datetime import datetime, date, timedelta
 from math import log, sqrt, exp
 from scipy.stats import norm
 import time
-import requests
 
 st.set_page_config(page_title="Stock Analysis Dashboard", layout="wide")
 
@@ -22,7 +21,6 @@ if 'portfolio' not in st.session_state:
 # FUNCTIONS
 # ============================================================
 
-# Function to get current risk-free rate
 def get_risk_free_rate():
     try:
         treasury = yf.Ticker("^TNX")
@@ -32,7 +30,6 @@ def get_risk_free_rate():
     except:
         return 0.045
 
-# Function to get dividend yield
 def get_dividend_yield(ticker):
     try:
         stock = yf.Ticker(ticker)
@@ -48,7 +45,6 @@ def get_dividend_yield(ticker):
     except:
         return 0
 
-# Function to get next earnings date
 def get_next_earnings(ticker):
     try:
         stock = yf.Ticker(ticker)
@@ -62,7 +58,6 @@ def get_next_earnings(ticker):
     except:
         return None
 
-# Function to get historical earnings surprises
 def get_earnings_surprises(ticker):
     try:
         stock = yf.Ticker(ticker)
@@ -73,7 +68,6 @@ def get_earnings_surprises(ticker):
     except:
         return None
 
-# Function to get news
 def get_news(ticker):
     try:
         stock = yf.Ticker(ticker)
@@ -84,7 +78,6 @@ def get_news(ticker):
     except:
         return []
 
-# Function to get implied volatility from option chain
 def get_implied_volatility(ticker, current_price, option_type):
     try:
         stock = yf.Ticker(ticker)
@@ -92,7 +85,6 @@ def get_implied_volatility(ticker, current_price, option_type):
         if not expirations:
             return None
         
-        # Use nearest expiration
         nearest_exp = expirations[0]
         opt_chain = stock.option_chain(nearest_exp)
         
@@ -104,17 +96,15 @@ def get_implied_volatility(ticker, current_price, option_type):
         if chain.empty:
             return None
         
-        # Find option with strike closest to current price
         chain['diff'] = abs(chain['strike'] - current_price)
         closest = chain.loc[chain['diff'].idxmin()]
         
         if 'impliedVolatility' in closest and not pd.isna(closest['impliedVolatility']):
-            return closest['impliedVolatility'] * 100  # Convert to percentage
+            return closest['impliedVolatility'] * 100
         return None
     except:
         return None
 
-# TradingView Chart function
 def tradingview_full_chart(ticker, timeframe="D", theme="dark"):
     chart_html = f"""
     <div class="tradingview-widget-container">
@@ -191,7 +181,6 @@ def calculate_rsi(data, window=14):
 # SIDEBAR
 # ============================================================
 
-# Theme Toggle
 with st.sidebar:
     st.header("🎨 Appearance")
     theme = st.selectbox("Theme:", ["Dark", "Light"], index=0)
@@ -201,7 +190,6 @@ with st.sidebar:
         <style>
         .stApp { background-color: #ffffff; }
         .stMarkdown { color: #1e1e2e; }
-        .stMetric { background-color: #f5f5f5; }
         </style>
         """, unsafe_allow_html=True)
     else:
@@ -212,13 +200,11 @@ with st.sidebar:
         </style>
         """, unsafe_allow_html=True)
 
-# Get initial risk-free rate
 risk_free_rate = get_risk_free_rate()
 
 with st.sidebar:
     st.header("🔍 Input")
     ticker = st.text_input("Stock / Index Ticker:", "SPY").upper()
-    
     st.caption("Examples: Stocks: AAPL, MSFT, GME | Indices: SPY, QQQ, DIA, IWM")
     
     st.markdown("---")
@@ -241,7 +227,6 @@ with st.sidebar:
     st.markdown("---")
     st.header("⚙️ Options Calculator")
     
-    # Date picker for expiration
     expiration_date = st.date_input(
         "Expiration Date:",
         value=date.today(),
@@ -249,7 +234,6 @@ with st.sidebar:
         help="Select the option's expiration date"
     )
     
-    # Calculate days to expiration
     today = date.today()
     if expiration_date >= today:
         days = (expiration_date - today).days
@@ -268,7 +252,6 @@ with st.sidebar:
         "Volatility Source:",
         ["Historical Volatility (from price data)", "Implied Volatility (from option chain)"],
         index=0,
-        help="Historical uses past price movement. Implied uses current option prices (more accurate for options)."
     )
     
     st.markdown("---")
@@ -282,8 +265,6 @@ with st.sidebar:
         st.caption(f"⚠️ Frequent refreshes may cause rate limits")
     
     st.caption(f"📅 Last update: {datetime.now().strftime('%H:%M:%S')}")
-    st.markdown("---")
-    st.caption("💡 Tip: Use Implied Volatility for more accurate option pricing")
 
 # ============================================================
 # MAIN APP
@@ -313,9 +294,7 @@ if ticker:
         else:
             six_month_return = 0
         
-        # ============================================================
-        # VOLATILITY CALCULATION (Based on user selection)
-        # ============================================================
+        # Volatility calculation based on user selection
         if volatility_source == "Historical Volatility (from price data)":
             if len(hist) > 20:
                 daily_returns = hist['Close'].pct_change().dropna()
@@ -324,35 +303,27 @@ if ticker:
                 volatility = 30
             st.sidebar.caption(f"📊 Historical Volatility: {volatility:.1f}%")
         else:
-            # Try to get implied volatility
             implied_vol = get_implied_volatility(ticker, current_price, option_type)
             if implied_vol and implied_vol > 0:
                 volatility = implied_vol
                 st.sidebar.caption(f"📊 Implied Volatility: {volatility:.1f}% (from option chain)")
             else:
-                # Fallback to historical
                 if len(hist) > 20:
                     daily_returns = hist['Close'].pct_change().dropna()
                     volatility = daily_returns.std() * (252 ** 0.5) * 100
                 else:
                     volatility = 30
                 st.sidebar.warning("Could not fetch implied volatility, using historical")
-                st.sidebar.caption(f"📊 Using Historical Volatility: {volatility:.1f}%")
         
-        # Manual volatility override
         manual_vol = st.sidebar.checkbox("Manually override volatility", value=False)
         if manual_vol:
             volatility = st.sidebar.number_input("Manual Volatility (%):", value=volatility, step=1.0)
-            st.sidebar.caption(f"Using manual volatility: {volatility:.1f}%")
         
         rsi = calculate_rsi(hist['Close'])
         current_rsi = rsi.iloc[-1] if not rsi.empty else 50
-        
         asset_type = "Index/ETF" if is_index_ticker else "Stock"
         
-        # ============================================================
-        # HEADER METRICS
-        # ============================================================
+        # Header Metrics
         st.subheader(f"📊 {ticker} - {info.get('longName', ticker)} ({asset_type})")
         
         col1, col2, col3, col4, col5, col6 = st.columns(6)
@@ -399,29 +370,23 @@ if ticker:
         
         st.markdown("---")
         
-        # ============================================================
-        # EARNINGS CALENDAR
-        # ============================================================
+        # Earnings Calendar
         if not is_index_ticker:
             st.subheader("📅 Earnings Calendar")
-            
             next_earnings = get_next_earnings(ticker)
             earnings_surprises = get_earnings_surprises(ticker)
             
             col1, col2 = st.columns(2)
-            
             with col1:
                 if next_earnings:
                     next_earnings_date = pd.to_datetime(next_earnings).date()
                     days_until = (next_earnings_date - date.today()).days
                     st.metric("Next Earnings Date", next_earnings_date.strftime('%Y-%m-%d'))
                     st.caption(f"{days_until} days from today")
-                    
                     if days_until <= 30:
-                        st.warning("⚠️ Earnings are within 30 days - options may have elevated IV")
+                        st.warning("⚠️ Earnings within 30 days - options may have elevated IV")
                 else:
                     st.info("Earnings date not available")
-            
             with col2:
                 if earnings_surprises is not None and not earnings_surprises.empty:
                     st.write("**Recent Earnings Surprises:**")
@@ -431,20 +396,11 @@ if ticker:
                         st.write(f"{color} {idx.strftime('%Y-%m-%d')}: {surprise_pct:+.1f}%")
                 else:
                     st.info("Historical earnings data not available")
-            
             st.markdown("---")
         
-        # ============================================================
-        # TRADINGVIEW CHART
-        # ============================================================
+        # TradingView Chart
         st.subheader("📉 TradingView Chart")
-        
-        chart_option = st.radio(
-            "Choose Chart Mode:",
-            ["Embedded Chart (View Only)", "Launch Full TradingView (Save Drawings)"],
-            horizontal=True
-        )
-        
+        chart_option = st.radio("Choose Chart Mode:", ["Embedded Chart (View Only)", "Launch Full TradingView (Save Drawings)"], horizontal=True)
         chart_theme = "dark" if theme == "Dark" else "light"
         
         if chart_option == "Launch Full TradingView (Save Drawings)":
@@ -452,11 +408,7 @@ if ticker:
             st.markdown(f"""
             <div style="text-align: center; padding: 40px; background-color: #1e1e2e; border-radius: 10px; border: 1px solid #89b4fa;">
                 <h3>📈 Open TradingView for Full Analysis</h3>
-                <a href="{tv_link}" target="_blank">
-                    <button style="background-color: #89b4fa; color: #1e1e2e; padding: 12px 30px; font-size: 16px; border: none; border-radius: 5px; cursor: pointer; font-weight: bold;">
-                        🚀 Launch TradingView for {ticker}
-                    </button>
-                </a>
+                <a href="{tv_link}" target="_blank"><button style="background-color: #89b4fa; color: #1e1e2e; padding: 12px 30px; font-size: 16px; border: none; border-radius: 5px; cursor: pointer; font-weight: bold;">🚀 Launch TradingView for {ticker}</button></a>
                 <p style="font-size: 12px; margin-top: 20px;">Create a free TradingView account to save your drawings</p>
             </div>
             """, unsafe_allow_html=True)
@@ -468,11 +420,8 @@ if ticker:
         
         st.markdown("---")
         
-        # ============================================================
-        # COMPANY INFORMATION
-        # ============================================================
+        # Company Information
         col1, col2 = st.columns(2)
-        
         with col1:
             st.subheader("🏢 Asset Information")
             st.write(f"**Name:** {info.get('longName', 'N/A')}")
@@ -482,7 +431,6 @@ if ticker:
             st.write(f"**Country:** {info.get('country', 'N/A')}")
             st.write(f"**Asset Type:** {asset_type}")
             st.write(f"**Volume:** {info.get('volume', 0):,}")
-        
         with col2:
             st.subheader("📈 Key Metrics")
             if not is_index_ticker:
@@ -494,9 +442,7 @@ if ticker:
         
         st.markdown("---")
         
-        # ============================================================
-        # FINANCIAL STATEMENTS
-        # ============================================================
+        # Financial Statements
         if not is_index_ticker and not income_statement.empty:
             st.subheader("💰 Key Financials (in Millions)")
             latest_income = income_statement.iloc[:, 0] if len(income_statement.columns) > 0 else None
@@ -537,9 +483,7 @@ if ticker:
             st.dataframe(df, use_container_width=True, hide_index=True)
             st.markdown("---")
         
-        # ============================================================
-        # OPTIONS CALCULATOR
-        # ============================================================
+        # Options Calculator
         if days > 0:
             st.subheader("🎯 Options Price Calculator (Black-Scholes)")
             
@@ -592,18 +536,14 @@ if ticker:
                 with col5:
                     st.metric("Vega (per 1%)", f"{vega:.4f}")
                 
-                # ============================================================
-                # PROBABILITY CALCULATOR
-                # ============================================================
+                # Probability Calculator
                 st.markdown("---")
                 st.subheader("📊 Probability Calculator")
                 
                 col1, col2 = st.columns(2)
-                
                 with col1:
                     st.write("**Probability of Touching a Price**")
                     target_price = st.number_input("Target Price ($):", value=current_price, step=1.0, key="prob_target")
-                    
                     if target_price > current_price:
                         z_score = (log(target_price / current_price)) / (volatility / 100 * sqrt(days/365))
                         prob_up = norm.cdf(z_score) * 100
@@ -620,78 +560,63 @@ if ticker:
                     expected_move = current_price * (volatility / 100) * sqrt(days/365)
                     st.metric("Expected Move (±)", f"${expected_move:.2f}")
                     st.caption(f"Based on {volatility:.0f}% volatility over {days} days")
-                    
                     if option_type == "Call":
                         prob_itm = norm.cdf(d2) * 100
                     else:
                         prob_itm = norm.cdf(-d2) * 100
                     st.metric("Probability ITM at Expiration", f"{prob_itm:.1f}%")
                 
-                # ============================================================
-                # TRADING SIGNAL & RECOMMENDATION SECTION
-                # ============================================================
+                # Trading Signal Section
                 st.markdown("---")
                 st.subheader("📊 Trading Signal & Recommendation")
                 
                 col1, col2 = st.columns(2)
-                
                 with col1:
-                    market_price = st.number_input(
-                        "Enter Actual Option Market Price ($):", 
-                        value=None,
-                        step=0.05,
-                        format="%.2f",
-                        help="Enter the current market price of the option from your broker"
-                    )
+                    market_price_input = st.number_input("Enter Actual Option Market Price ($):", value=None, step=0.05, format="%.2f", help="Enter the current market price from your broker")
                 
                 with col2:
-                    if market_price is not None and market_price > 0 and option_price > 0:
-                        price_diff = market_price - option_price
+                    if market_price_input is not None and market_price_input > 0 and option_price > 0:
+                        price_diff = market_price_input - option_price
                         diff_percent = (price_diff / option_price * 100)
-                        st.metric(
-                            "Price Difference", 
-                            f"${price_diff:.2f}", 
-                            delta=f"{diff_percent:+.1f}%",
-                            delta_color="normal"
-                        )
+                        st.metric("Price Difference", f"${price_diff:.2f}", delta=f"{diff_percent:+.1f}%", delta_color="normal")
                     else:
                         st.info("Enter market price to see difference")
                         price_diff = 0
                         diff_percent = 0
                 
-                if market_price is not None and market_price > 0 and option_price > 0:
+                if market_price_input is not None and market_price_input > 0 and option_price > 0:
                     if diff_percent < -15:
                         recommendation = "🔥 STRONG BUY"
-                        rec_reason = f"Option is significantly undervalued ({abs(diff_percent):.0f}% below theoretical value)"
-                        action = "Consider buying this option - market is underpricing this opportunity"
+                        rec_reason = f"Option is significantly undervalued ({abs(diff_percent):.0f}% below theoretical)"
+                        action = "Consider buying - market is underpricing this opportunity"
                         risk_level = "HIGH" if diff_percent < -30 else "MODERATE"
                     elif diff_percent < -5:
                         recommendation = "✅ BUY"
-                        rec_reason = f"Option is undervalued ({abs(diff_percent):.0f}% below theoretical value)"
+                        rec_reason = f"Option is undervalued ({abs(diff_percent):.0f}% below theoretical)"
                         action = "Good opportunity to buy - market is offering a discount"
                         risk_level = "LOW"
                     elif diff_percent > 15:
                         recommendation = "⚠️ STRONG SELL"
-                        rec_reason = f"Option is significantly overvalued ({diff_percent:.0f}% above theoretical value)"
-                        action = "Consider selling or avoiding - market is overpricing this option"
+                        rec_reason = f"Option is significantly overvalued ({diff_percent:.0f}% above theoretical)"
+                        action = "Consider selling or avoiding - market is overpricing"
                         risk_level = "HIGH"
                     elif diff_percent > 5:
                         recommendation = "❌ SELL / AVOID"
-                        rec_reason = f"Option is overvalued ({diff_percent:.0f}% above theoretical value)"
-                        action = "Premium is expensive - consider selling or waiting for better entry"
+                        rec_reason = f"Option is overvalued ({diff_percent:.0f}% above theoretical)"
+                        action = "Premium is expensive - wait for better entry"
                         risk_level = "MODERATE"
                     else:
                         recommendation = "⏸️ HOLD / MONITOR"
-                        rec_reason = f"Option is fairly priced ({abs(diff_percent):.0f}% from theoretical value)"
+                        rec_reason = f"Option is fairly priced ({abs(diff_percent):.0f}% from theoretical)"
                         action = "Wait for better opportunity or enter small position"
                         risk_level = "LOW"
                     
                     st.markdown(f"""
                     <div style="background-color: #1e1e2e; border-radius: 10px; padding: 20px; border-left: 5px solid {'#a6e3a1' if 'BUY' in recommendation else '#f38ba8' if 'SELL' in recommendation else '#f9e2af'};">
                         <h3 style="margin: 0; color: {'#a6e3a1' if 'BUY' in recommendation else '#f38ba8' if 'SELL' in recommendation else '#f9e2af'};">{recommendation}</h3>
-                        <p style="margin: 10px 0 5px 0;"><strong>Reason:</strong> {rec_reason}</p>
-                        <p style="margin: 5px 0;"><strong>Action:</strong> {action}</p>
-                        <p style="margin: 5px 0;"><strong>Risk Level:</strong> {risk_level}</p>
+                        <p><strong>Reason:</strong> {rec_reason}</p>
+                        <p><strong>Action:</strong> {action}</p>
+                        <p><strong>Risk Level:</strong> {risk_level}</p>
                     </div>
                     """, unsafe_allow_html=True)
                     
@@ -699,46 +624,74 @@ if ticker:
                     st.subheader("📈 Trade Analysis")
                     
                     col1, col2, col3 = st.columns(3)
-                    
                     with col1:
                         st.write("**Price Comparison**")
                         st.write(f"📊 Theoretical: **${option_price:.2f}**")
-                        st.write(f"💵 Market: **${market_price:.2f}**")
-                        if market_price < option_price:
-                            st.write(f"💰 Discount: **${option_price - market_price:.2f}** ({(option_price - market_price)/option_price*100:.0f}%)")
-                        elif market_price > option_price:
-                            st.write(f"💸 Premium: **${market_price - option_price:.2f}** ({(market_price - option_price)/option_price*100:.0f}%)")
-                        else:
-                            st.write(f"⚖️ Fair Value")
-                    
+                        st.write(f"💵 Market: **${market_price_input:.2f}**")
+                        if market_price_input < option_price:
+                            st.write(f"💰 Discount: **${option_price - market_price_input:.2f}** ({(option_price - market_price_input)/option_price*100:.0f}%)")
                     with col2:
                         st.write("**Profit Scenarios**")
-                        if market_price < option_price:
-                            potential_gain = (option_price - market_price) / market_price * 100
+                        if market_price_input < option_price:
+                            potential_gain = (option_price - market_price_input) / market_price_input * 100
                             st.write(f"📈 Upside to Fair Value: **+{potential_gain:.0f}%**")
-                            st.write(f"🎯 Target: **${option_price:.2f}**")
-                        else:
-                            st.write(f"⚠️ Currently overvalued by **{((market_price - option_price)/option_price*100):.0f}%**")
-                    
                     with col3:
                         st.write("**Suggested Trade**")
                         if "BUY" in recommendation:
                             st.write("✅ **BUY** this option")
-                            st.write(f"💰 Risk per contract: **${market_price * 100:.2f}**")
+                            st.write(f"💰 Risk per contract: **${market_price_input * 100:.2f}**")
                         elif "SELL" in recommendation:
                             st.write("❌ **AVOID** buying")
-                            st.write("💡 Consider selling if you own")
                         else:
                             st.write("⏸️ **WAIT** for better price")
-                            st.write("💡 Enter at fair value or below")
                     
-                    st.markdown("---")
-                    
-                    # ============================================================
-                    # POSITION SIZE CALCULATOR
-                    # ============================================================
+                    # Position Size Calculator
                     with st.expander("💰 Position Size Calculator"):
-                        st.subheader("Risk Management")
-                        
                         account_size = st.number_input("Account Size ($):", value=10000, step=1000, key="account_size")
                         risk_percent = st.number_input("Risk Per Trade (%):", value=2.0, step=0.5, key="risk_percent") / 100
+                        max_risk = account_size * risk_percent
+                        st.metric("Max Risk per Trade", f"${max_risk:.2f}")
+                        if market_price_input and market_price_input > 0:
+                            contracts = int(max_risk / (market_price_input * 100))
+                            st.metric("Max Contracts", contracts)
+                            st.metric("Total Risk", f"${contracts * market_price_input * 100:.2f}")
+                            if contracts > 0:
+                                st.success(f"✅ Recommended: Buy **{contracts} contract(s)**")
+                            else:
+                                st.warning("⚠️ Account too small for 1 contract")
+                else:
+                    st.info("📝 Enter the actual option market price to get a trading recommendation")
+        else:
+            st.error("Please select a future expiration date")
+        
+        # Real-Time News
+        st.markdown("---")
+        st.subheader("📰 Real-Time News")
+        news = get_news(ticker)
+        if news:
+            for i, article in enumerate(news[:10]):
+                title = article.get('title', 'No title')
+                link = article.get('link', '#')
+                publisher = article.get('publisher', 'Unknown')
+                pub_date = article.get('providerPublishTime', None)
+                date_str = datetime.fromtimestamp(pub_date).strftime('%Y-%m-%d %H:%M') if pub_date else "Recently"
+                st.markdown(f"**{i+1}. [{title}]({link})**")
+                st.caption(f"📰 {publisher} | 🕐 {date_str}")
+                st.markdown("---")
+        else:
+            st.info(f"No recent news found for {ticker}")
+        
+        # Auto-refresh logic
+        if auto_refresh:
+            time.sleep(interval_seconds)
+            st.rerun()
+        
+    except Exception as e:
+        if "Too Many Requests" in str(e) or "Rate limited" in str(e):
+            st.error("⚠️ **Rate Limit Exceeded**")
+            st.info("Yahoo Finance has temporarily limited your requests. Turn OFF auto-refresh, wait 10-15 minutes, then refresh manually.")
+        else:
+            st.error(f"Error fetching data for {ticker}: {e}")
+            st.info("Please check the ticker symbol and try again.")
+else:
+    st.info("Enter a stock or index ticker (e.g., AAPL, MSFT, SPY, QQQ, GME) in the sidebar to begin.")
