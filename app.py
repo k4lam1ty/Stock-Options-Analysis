@@ -2,15 +2,22 @@ import streamlit as st
 import yfinance as yf
 import pandas as pd
 import numpy as np
-from datetime import datetime, date
+from datetime import datetime, date, timedelta
 from math import log, sqrt, exp
 from scipy.stats import norm
 import time
+import requests
+from bs4 import BeautifulSoup
 
 st.set_page_config(page_title="Stock Analysis Dashboard", layout="wide")
 
-st.title("📈 Stock Analysis Dashboard")
-st.markdown("---")
+# ============================================================
+# SESSION STATE FOR WATCHLIST
+# ============================================================
+if 'watchlist' not in st.session_state:
+    st.session_state.watchlist = []
+if 'portfolio' not in st.session_state:
+    st.session_state.portfolio = {}
 
 # ============================================================
 # FUNCTIONS
@@ -42,8 +49,45 @@ def get_dividend_yield(ticker):
     except:
         return 0
 
+# Function to get next earnings date
+def get_next_earnings(ticker):
+    try:
+        stock = yf.Ticker(ticker)
+        info = stock.info
+        earnings_date = info.get('earningsDate', None)
+        if earnings_date:
+            if isinstance(earnings_date, list):
+                return earnings_date[0]
+            return earnings_date
+        return None
+    except:
+        return None
+
+# Function to get historical earnings surprises
+def get_earnings_surprises(ticker):
+    try:
+        stock = yf.Ticker(ticker)
+        earnings = stock.earnings
+        if not earnings.empty:
+            return earnings.tail(4)
+        return None
+    except:
+        return None
+
+# Function to get news
+def get_news(ticker):
+    try:
+        # Use Yahoo Finance news
+        stock = yf.Ticker(ticker)
+        news = stock.news
+        if news:
+            return news[:10]  # Return top 10 news items
+        return []
+    except:
+        return []
+
 # TradingView Chart function
-def tradingview_full_chart(ticker, timeframe="D"):
+def tradingview_full_chart(ticker, timeframe="D", theme="dark"):
     chart_html = f"""
     <div class="tradingview-widget-container">
         <div id="tradingview_full_chart"></div>
@@ -55,7 +99,7 @@ def tradingview_full_chart(ticker, timeframe="D"):
             "symbol": "{ticker}",
             "interval": "{timeframe}",
             "timezone": "America/New_York",
-            "theme": "dark",
+            "theme": "{theme}",
             "style": "1",
             "locale": "en",
             "toolbar_bg": "#f1f3f6",
@@ -64,7 +108,7 @@ def tradingview_full_chart(ticker, timeframe="D"):
             "save_image": true,
             "calendar": true,
             "container_id": "tradingview_full_chart",
-            "studies": ["MASimple@tv-basicstudies", "RSI@tv-basicstudies", "MACD@tv-basicstudies"],
+            "studies": ["RSI@tv-basicstudies", "MACD@tv-basicstudies"],
             "withdateranges": true,
             "hide_side_toolbar": false,
             "show_popup_button": true,
@@ -115,20 +159,33 @@ def calculate_rsi(data, window=14):
     rsi = 100 - (100 / (1 + rs))
     return rsi
 
-def calculate_macd(data, fast=12, slow=26, signal=9):
-    ema_fast = data.ewm(span=fast, adjust=False).mean()
-    ema_slow = data.ewm(span=slow, adjust=False).mean()
-    macd_line = ema_fast - ema_slow
-    signal_line = macd_line.ewm(span=signal, adjust=False).mean()
-    histogram = macd_line - signal_line
-    return macd_line, signal_line, histogram
-
 # ============================================================
 # SIDEBAR
 # ============================================================
 
+# Theme Toggle
+with st.sidebar:
+    st.header("🎨 Appearance")
+    theme = st.selectbox("Theme:", ["Dark", "Light"], index=0)
+    
+    if theme == "Light":
+        st.markdown("""
+        <style>
+        .stApp { background-color: #ffffff; }
+        .stMarkdown { color: #1e1e2e; }
+        .stMetric { background-color: #f5f5f5; }
+        </style>
+        """, unsafe_allow_html=True)
+    else:
+        st.markdown("""
+        <style>
+        .stApp { background-color: #1e1e2e; }
+        .stMarkdown { color: #cdd6f4; }
+        </style>
+        """, unsafe_allow_html=True)
+
 # Get initial risk-free rate
-initial_rate = get_risk_free_rate()
+risk_free_rate = get_risk_free_rate()
 
 with st.sidebar:
     st.header("🔍 Input")
@@ -279,6 +336,41 @@ if ticker:
         st.markdown("---")
         
         # ============================================================
+        # EARNINGS CALENDAR
+        # ============================================================
+        if not is_index_ticker:
+            st.subheader("📅 Earnings Calendar")
+            
+            next_earnings = get_next_earnings(ticker)
+            earnings_surprises = get_earnings_surprises(ticker)
+            
+            col1, col2 = st.columns(2)
+            
+            with col1:
+                if next_earnings:
+                    next_earnings_date = pd.to_datetime(next_earnings).date()
+                    days_until = (next_earnings_date - date.today()).days
+                    st.metric("Next Earnings Date", next_earnings_date.strftime('%Y-%m-%d'))
+                    st.caption(f"{days_until} days from today")
+                    
+                    if days_until <= 30:
+                        st.warning("⚠️ Earnings are within 30 days - options may have elevated IV")
+                else:
+                    st.info("Earnings date not available")
+            
+            with col2:
+                if earnings_surprises is not None and not earnings_surprises.empty:
+                    st.write("**Recent Earnings Surprises:**")
+                    for idx, row in earnings_surprises.iterrows():
+                        surprise_pct = row.get('Earnings Surprise', 0) * 100 if 'Earnings Surprise' in row else 0
+                        color = "🟢" if surprise_pct > 0 else "🔴" if surprise_pct < 0 else "⚪"
+                        st.write(f"{color} {idx.strftime('%Y-%m-%d')}: {surprise_pct:+.1f}%")
+                else:
+                    st.info("Historical earnings data not available")
+            
+            st.markdown("---")
+        
+        # ============================================================
         # TRADINGVIEW CHART
         # ============================================================
         st.subheader("📉 TradingView Chart")
@@ -288,6 +380,9 @@ if ticker:
             ["Embedded Chart (View Only)", "Launch Full TradingView (Save Drawings)"],
             horizontal=True
         )
+        
+        # Theme selector for chart (matches app theme)
+        chart_theme = "dark" if theme == "Dark" else "light"
         
         if chart_option == "Launch Full TradingView (Save Drawings)":
             tv_link = tradingview_direct_link(ticker)
@@ -306,7 +401,7 @@ if ticker:
             timeframe_options = {"1 Minute": "1", "5 Minutes": "5", "15 Minutes": "15", "30 Minutes": "30", "1 Hour": "60", "4 Hours": "240", "Daily": "D", "Weekly": "W", "Monthly": "M"}
             selected_timeframe = st.selectbox("Select Timeframe:", list(timeframe_options.keys()))
             timeframe_value = timeframe_options[selected_timeframe]
-            tradingview_full_chart(ticker, timeframe_value)
+            tradingview_full_chart(ticker, timeframe_value, chart_theme)
         
         st.markdown("---")
         
@@ -382,10 +477,9 @@ if ticker:
         # ============================================================
         # OPTIONS CALCULATOR
         # ============================================================
-        st.subheader("🎯 Options Price Calculator (Black-Scholes)")
-        
-        # Check if days is valid
         if days > 0:
+            st.subheader("🎯 Options Price Calculator (Black-Scholes)")
+            
             col1, col2, col3 = st.columns(3)
             with col1:
                 st.write(f"**Current Price:** ${current_price:.2f}")
@@ -434,6 +528,44 @@ if ticker:
                     st.metric("Theta (Daily)", f"{theta/365:.4f}")
                 with col5:
                     st.metric("Vega (per 1%)", f"{vega:.4f}")
+                
+                # ============================================================
+                # PROBABILITY CALCULATOR
+                # ============================================================
+                st.markdown("---")
+                st.subheader("📊 Probability Calculator")
+                
+                col1, col2 = st.columns(2)
+                
+                with col1:
+                    st.write("**Probability of Touching a Price**")
+                    target_price = st.number_input("Target Price ($):", value=current_price, step=1.0, key="prob_target")
+                    
+                    if target_price > current_price:
+                        # Probability of going up
+                        z_score = (log(target_price / current_price)) / (volatility / 100 * sqrt(days/365))
+                        prob_up = norm.cdf(z_score) * 100
+                        st.metric(f"Probability to reach ${target_price:.0f}", f"{prob_up:.1f}%")
+                    elif target_price < current_price:
+                        # Probability of going down
+                        z_score = (log(current_price / target_price)) / (volatility / 100 * sqrt(days/365))
+                        prob_down = norm.cdf(z_score) * 100
+                        st.metric(f"Probability to reach ${target_price:.0f}", f"{prob_down:.1f}%")
+                    else:
+                        st.info("Enter a different target price")
+                
+                with col2:
+                    st.write("**Expected Move**")
+                    expected_move = current_price * (volatility / 100) * sqrt(days/365)
+                    st.metric("Expected Move (±)", f"${expected_move:.2f}")
+                    st.caption(f"Based on {volatility:.0f}% volatility over {days} days")
+                    
+                    # Probability of expiring ITM
+                    if option_type == "Call":
+                        prob_itm = norm.cdf(d2) * 100
+                    else:
+                        prob_itm = norm.cdf(-d2) * 100
+                    st.metric("Probability ITM at Expiration", f"{prob_itm:.1f}%")
                 
                 # ============================================================
                 # TRADING SIGNAL & RECOMMENDATION SECTION
@@ -548,22 +680,33 @@ if ticker:
                     
                     st.markdown("---")
                     
-                    with st.expander("📝 Trade Notes & Checklist"):
-                        st.write("**Before entering the trade:**")
-                        st.write("- [ ] Verify the option chain (bid/ask spread)")
-                        st.write("- [ ] Check volume and open interest")
-                        st.write("- [ ] Confirm expiration date")
-                        st.write("- [ ] Review your risk management rules")
-                        st.write("- [ ] Set a stop loss or profit target")
-                        st.write("- [ ] Consider position size (recommended: 1-2% of account)")
+                    # ============================================================
+                    # POSITION SIZE CALCULATOR
+                    # ============================================================
+                    with st.expander("💰 Position Size Calculator"):
+                        st.subheader("Risk Management")
                         
-                        if market_price < option_price:
-                            st.success(f"✅ This option is undervalued by {abs(diff_percent):.0f}%")
-                            st.write(f"💡 Consider buying if the theoretical value of ${option_price:.2f} is realistic")
-                        elif market_price > option_price:
-                            st.warning(f"⚠️ This option is overvalued by {diff_percent:.0f}%")
-                            st.write(f"💡 Wait for the price to drop closer to ${option_price:.2f}")
-
+                        account_size = st.number_input("Account Size ($):", value=10000, step=1000, key="account_size")
+                        risk_percent = st.number_input("Risk Per Trade (%):", value=2.0, step=0.5, key="risk_percent") / 100
+                        
+                        max_risk = account_size * risk_percent
+                        
+                        st.metric("Max Risk per Trade", f"${max_risk:.2f}")
+                        st.caption(f"Based on {risk_percent*100:.0f}% of ${account_size:,.0f} account")
+                        
+                        if market_price and market_price > 0:
+                            contracts = int(max_risk / (market_price * 100))
+                            total_risk = contracts * market_price * 100
+                            st.metric("Max Contracts", contracts)
+                            st.metric("Total Risk", f"${total_risk:.2f}")
+                            
+                            if contracts > 0:
+                                st.success(f"✅ Recommended: Buy **{contracts} contract(s)**")
+                            else:
+                                st.warning("⚠️ Account too small for 1 contract at current risk parameters")
+                        else:
+                            st.info("Enter market price to calculate position size")
+                
                 else:
                     st.info("📝 Enter the actual option market price above to get a trading recommendation")
         
@@ -571,29 +714,30 @@ if ticker:
             st.error("Please select a future expiration date")
         
         # ============================================================
-        # AUTO-REFRESH LOGIC
+        # REAL-TIME NEWS
         # ============================================================
-        if auto_refresh:
-            time.sleep(interval_seconds)
-            st.rerun()
+        st.markdown("---")
+        st.subheader("📰 Real-Time News")
         
-    except Exception as e:
-        if "Too Many Requests" in str(e) or "Rate limited" in str(e):
-            st.error("⚠️ **Rate Limit Exceeded**")
-            st.info("""
-            Yahoo Finance has temporarily limited your requests.
-            
-            **What to do:**
-            - Turn OFF auto-refresh in the sidebar
-            - Wait 10-15 minutes
-            - Refresh manually (F5)
-            
-            **To prevent this:**
-            - Keep auto-refresh OFF
-            - Use manual refresh sparingly
-            """)
+        news = get_news(ticker)
+        
+        if news:
+            for i, article in enumerate(news[:10]):
+                title = article.get('title', 'No title')
+                link = article.get('link', '#')
+                publisher = article.get('publisher', 'Unknown')
+                pub_date = article.get('providerPublishTime', None)
+                
+                if pub_date:
+                    date_str = datetime.fromtimestamp(pub_date).strftime('%Y-%m-%d %H:%M')
+                else:
+                    date_str = "Recently"
+                
+                st.markdown(f"**{i+1}. [{title}]({link})**")
+                st.caption(f"📰 {publisher} | 🕐 {date_str}")
+                st.markdown("---")
         else:
-            st.error(f"Error fetching data for {ticker}: {e}")
-            st.info("Please check the ticker symbol and try again.")
-else:
-    st.info("Enter a stock or index ticker (e.g., AAPL, MSFT, SPY, QQQ, GME) in the sidebar to begin.")
+            st.info(f"No recent news found for {ticker}")
+        
+        # ============================================================
+        # WATCHLIST & PORTFOLIO
