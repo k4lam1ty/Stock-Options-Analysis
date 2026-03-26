@@ -224,7 +224,7 @@ def calculate_rsi(data, window=14):
     return rsi
 
 # ============================================================
-# SIDEBAR
+# SIDEBAR WITH THEME
 # ============================================================
 
 with st.sidebar:
@@ -234,8 +234,104 @@ with st.sidebar:
     if theme == "Light":
         st.markdown("""
         <style>
+        /* Main background */
         .stApp { background-color: #ffffff; }
-        .stMarkdown { color: #1e1e2e; }
+        
+        /* All text - make everything black */
+        .stMarkdown, .stMarkdown p, .stMarkdown h1, .stMarkdown h2, .stMarkdown h3, .stMarkdown h4, .stMarkdown h5, .stMarkdown h6,
+        .stText, .stTextInput, .stTextArea, .stNumberInput, .stSelectbox, .stMultiSelect,
+        .stMetric, .stMetric label, .stMetric .stMetric, .stMetric p,
+        .stDataFrame, .stDataFrame div, .stDataFrame span,
+        .stExpander, .stExpander summary, .stExpander p,
+        .stInfo, .stWarning, .stError, .stSuccess,
+        .stButton button, .stButton button p,
+        .stRadio label, .stCheckbox label,
+        .stCaption, .stCaption p {
+            color: #000000 !important;
+        }
+        
+        /* Sidebar specific */
+        .css-1d391kg, .css-1lcbmhc, .stSidebar, .stSidebar .stMarkdown {
+            background-color: #f5f5f5;
+        }
+        
+        .stSidebar .stMarkdown, .stSidebar p, .stSidebar label, .stSidebar h1, .stSidebar h2, .stSidebar h3 {
+            color: #000000 !important;
+        }
+        
+        /* Input fields - white background with black text */
+        input, .stTextInput input, .stNumberInput input, .stSelectbox select, .stTextArea textarea {
+            background-color: #ffffff !important;
+            color: #000000 !important;
+            border: 1px solid #cccccc !important;
+        }
+        
+        /* Metrics cards */
+        .stMetric {
+            background-color: #f8f9fa;
+            border-radius: 10px;
+            padding: 10px;
+            border: 1px solid #e9ecef;
+        }
+        
+        .stMetric label, .stMetric .stMetric {
+            color: #000000 !important;
+        }
+        
+        /* DataFrames */
+        .dataframe, .stDataFrame, .stDataFrame table, .stDataFrame th, .stDataFrame td {
+            color: #000000 !important;
+            background-color: #ffffff !important;
+        }
+        
+        .stDataFrame th {
+            background-color: #f0f0f0 !important;
+            color: #000000 !important;
+        }
+        
+        /* Buttons */
+        .stButton button {
+            background-color: #f0f0f0 !important;
+            color: #000000 !important;
+            border: 1px solid #cccccc !important;
+        }
+        
+        .stButton button:hover {
+            background-color: #e0e0e0 !important;
+        }
+        
+        /* Expander */
+        .stExpander {
+            background-color: #f8f9fa;
+            border: 1px solid #e9ecef;
+            border-radius: 5px;
+        }
+        
+        .stExpander summary {
+            color: #000000 !important;
+        }
+        
+        /* Metric values - large numbers */
+        div[data-testid="stMetricValue"] {
+            color: #000000 !important;
+            font-weight: bold;
+        }
+        
+        /* Metric labels */
+        div[data-testid="stMetricLabel"] {
+            color: #555555 !important;
+        }
+        
+        /* Headers */
+        h1, h2, h3, h4, h5, h6 {
+            color: #000000 !important;
+        }
+        
+        /* Code blocks */
+        code, pre {
+            background-color: #f5f5f5 !important;
+            color: #333333 !important;
+        }
         </style>
         """, unsafe_allow_html=True)
     else:
@@ -243,6 +339,9 @@ with st.sidebar:
         <style>
         .stApp { background-color: #1e1e2e; }
         .stMarkdown { color: #cdd6f4; }
+        .stMetric { background-color: #313244; }
+        .stMetric label, .stMetric .stMetric { color: #cdd6f4; }
+        div[data-testid="stMetricValue"] { color: #a6e3a1; }
         </style>
         """, unsafe_allow_html=True)
 
@@ -600,7 +699,7 @@ if ticker:
                     st.metric("Vega (per 1%)", f"{vega:.4f}")
                 
                 # ============================================================
-                # PROBABILITY CALCULATOR (CORRECTED)
+                # PROBABILITY CALCULATOR
                 # ============================================================
                 st.markdown("---")
                 st.subheader("📊 Probability Calculator")
@@ -614,29 +713,22 @@ if ticker:
                     target_price = st.number_input("Target Price ($):", value=current_price, step=1.0, key="prob_target", format="%.2f")
                     
                     if target_price != current_price:
-                        # Calculate drift and volatility
-                        mu = (risk_free_rate - dividend_yield)  # Expected return
+                        mu = (risk_free_rate - dividend_yield)
                         sigma = volatility / 100
                         T_days = days / 365
                         
                         if target_price > current_price:
-                            # Probability of touching upside barrier
-                            # Formula: P(touch) = (S/K)^(2*mu/sigma^2)
                             power = (2 * mu) / (sigma ** 2)
                             prob_touch = (current_price / target_price) ** power
                             prob_touch = max(0, min(prob_touch, 1.0))
-                            
                             st.metric(f"Probability to touch ${target_price:,.2f}", f"{prob_touch*100:.1f}%")
-                            st.caption(f"Upside barrier (touch at any time)")
-                            
+                            st.caption("Upside barrier (touch at any time)")
                         elif target_price < current_price:
-                            # Probability of touching downside barrier
                             power = (2 * mu) / (sigma ** 2)
                             prob_touch = (target_price / current_price) ** (-power)
                             prob_touch = max(0, min(prob_touch, 1.0))
-                            
                             st.metric(f"Probability to touch ${target_price:,.2f}", f"{prob_touch*100:.1f}%")
-                            st.caption(f"Downside barrier (touch at any time)")
+                            st.caption("Downside barrier (touch at any time)")
                     else:
                         st.info("Enter a different target price")
                 
@@ -647,17 +739,14 @@ if ticker:
                     close_price = st.number_input("Price at Expiration ($):", value=current_price, step=1.0, key="close_target", format="%.2f")
                     
                     if close_price != current_price:
-                        # Calculate d2 for probability of closing above/below
                         d2_close = (log(current_price / close_price) + (risk_free_rate - dividend_yield - (volatility/100)**2 / 2) * T) / ((volatility/100) * sqrt(T))
                         
                         if close_price > current_price:
                             prob_above = norm.cdf(-d2_close) * 100
                             st.metric(f"Probability to close above ${close_price:,.2f}", f"{prob_above:.1f}%")
-                            st.caption(f"Stock finishes above target at expiration")
                         else:
                             prob_below = norm.cdf(d2_close) * 100
                             st.metric(f"Probability to close below ${close_price:,.2f}", f"{prob_below:.1f}%")
-                            st.caption(f"Stock finishes below target at expiration")
                     else:
                         st.info("Enter a different price")
                 
@@ -680,7 +769,7 @@ if ticker:
                         st.metric("Probability ITM at Expiration", f"{prob_itm:.1f}%")
                 
                 # ============================================================
-                # TRADING SIGNAL & RECOMMENDATION SECTION
+                # TRADING SIGNAL
                 # ============================================================
                 st.markdown("---")
                 st.subheader("📊 Trading Signal & Recommendation")
@@ -804,7 +893,6 @@ if ticker:
                                 st.success(f"✅ **Recommended Position:** Buy **{contracts} contract(s)** at {format_currency(market_price_input)} each")
                                 st.caption(f"• Total cost: {format_currency(total_position_value)}")
                                 st.caption(f"• Risk: {format_currency(total_risk)} ({risk_percent:.1f}% of account)")
-                                
                                 if contracts > 5:
                                     st.warning(f"⚠️ {contracts} contracts is a large position - consider reducing size")
                             else:
@@ -837,7 +925,7 @@ if ticker:
             st.info(f"No recent news found for {ticker}")
         
         # ============================================================
-        # AUTO-REFRESH LOGIC
+        # AUTO-REFRESH
         # ============================================================
         if auto_refresh:
             time.sleep(interval_seconds)
