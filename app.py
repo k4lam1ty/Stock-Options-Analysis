@@ -576,7 +576,7 @@ with st.sidebar:
 tab1, tab2, tab3, tab4, tab5, tab6 = st.tabs(["📊 Analysis", "📈 Watchlist", "💰 Portfolio", "📝 Paper Trading", "⏰ Alerts", "📰 News"])
 
 # ============================================================
-# TAB 1: ANALYSIS (Complete with all financials)
+# TAB 1: ANALYSIS (Complete with all financials and Trade Recommendation)
 # ============================================================
 
 with tab1:
@@ -1028,18 +1028,170 @@ with tab1:
                     stop_loss_price = option_price * (1 - stop_loss_pct / 100)
                     st.metric("Stop Loss Price", format_currency(stop_loss_price))
                 
-                # Add to Portfolio buttons
+                # ============================================================
+                # TRADING SIGNAL & RECOMMENDATION (STRONG BUY - STRONG SELL)
+                # ============================================================
+                st.markdown("---")
+                st.subheader("📊 Trading Signal & Recommendation")
+                
                 col1, col2 = st.columns(2)
                 with col1:
-                    quantity = st.number_input("Quantity (contracts):", value=1, min_value=1, step=1, key="trade_quantity")
-                    if st.button("📝 Add to Real Portfolio", key="add_real"):
-                        add_position(ticker, strike, option_type, option_price, quantity, expiration_date.strftime('%Y-%m-%d'), is_paper=False)
-                        st.success(f"Added {quantity} contract(s) to Real Portfolio")
+                    market_price_input = st.number_input(
+                        "Enter Actual Option Market Price ($):", 
+                        value=None,
+                        step=0.05,
+                        format="%.2f",
+                        help="Enter the current market price of the option from your broker",
+                        key="market_price_input"
+                    )
                 
                 with col2:
-                    if st.button("🎮 Add to Paper Trading", key="add_paper"):
-                        add_position(ticker, strike, option_type, option_price, quantity, expiration_date.strftime('%Y-%m-%d'), is_paper=True)
-                        st.success(f"Added {quantity} contract(s) to Paper Trading")
+                    if market_price_input is not None and market_price_input > 0 and option_price > 0:
+                        price_diff = market_price_input - option_price
+                        diff_percent = (price_diff / option_price * 100)
+                        st.metric(
+                            "Price Difference", 
+                            format_currency(price_diff), 
+                            delta=f"{diff_percent:+.1f}%",
+                            delta_color="normal"
+                        )
+                    else:
+                        st.info("Enter market price to see difference")
+                        price_diff = 0
+                        diff_percent = 0
+                
+                if market_price_input is not None and market_price_input > 0 and option_price > 0:
+                    if diff_percent < -15:
+                        recommendation = "🔥 STRONG BUY"
+                        rec_color = "#a6e3a1"
+                        rec_reason = f"Option is significantly undervalued ({abs(diff_percent):.0f}% below theoretical value)"
+                        action = "Consider buying this option - market is underpricing this opportunity"
+                        risk_level = "HIGH" if diff_percent < -30 else "MODERATE"
+                    elif diff_percent < -5:
+                        recommendation = "✅ BUY"
+                        rec_color = "#a6e3a1"
+                        rec_reason = f"Option is undervalued ({abs(diff_percent):.0f}% below theoretical value)"
+                        action = "Good opportunity to buy - market is offering a discount"
+                        risk_level = "LOW"
+                    elif diff_percent > 15:
+                        recommendation = "⚠️ STRONG SELL"
+                        rec_color = "#f38ba8"
+                        rec_reason = f"Option is significantly overvalued ({diff_percent:.0f}% above theoretical value)"
+                        action = "Consider selling or avoiding - market is overpricing this option"
+                        risk_level = "HIGH"
+                    elif diff_percent > 5:
+                        recommendation = "❌ SELL / AVOID"
+                        rec_color = "#f9e2af"
+                        rec_reason = f"Option is overvalued ({diff_percent:.0f}% above theoretical value)"
+                        action = "Premium is expensive - wait for better entry"
+                        risk_level = "MODERATE"
+                    else:
+                        recommendation = "⏸️ HOLD / MONITOR"
+                        rec_color = "#f9e2af"
+                        rec_reason = f"Option is fairly priced ({abs(diff_percent):.0f}% from theoretical value)"
+                        action = "Wait for better opportunity or enter small position"
+                        risk_level = "LOW"
+                    
+                    st.markdown(f"""
+                    <div style="background-color: #1e1e2e; border-radius: 10px; padding: 20px; border-left: 5px solid {rec_color}; margin: 10px 0;">
+                        <h3 style="margin: 0; color: {rec_color};">{recommendation}</h3>
+                        <p style="margin: 10px 0 5px 0;"><strong>Reason:</strong> {rec_reason}</p>
+                        <p style="margin: 5px 0;"><strong>Action:</strong> {action}</p>
+                        <p style="margin: 5px 0;"><strong>Risk Level:</strong> {risk_level}</p>
+                    </div>
+                    """, unsafe_allow_html=True)
+                    
+                    st.markdown("---")
+                    st.subheader("📈 Trade Analysis")
+                    
+                    col1, col2, col3 = st.columns(3)
+                    with col1:
+                        st.write("**Price Comparison**")
+                        st.write(f"📊 Theoretical: **{format_currency(option_price)}**")
+                        st.write(f"💵 Market: **{format_currency(market_price_input)}**")
+                        if market_price_input < option_price:
+                            discount = option_price - market_price_input
+                            discount_pct = discount / option_price * 100
+                            st.write(f"💰 Discount: **{format_currency(discount)}** ({discount_pct:.0f}%)")
+                        elif market_price_input > option_price:
+                            premium = market_price_input - option_price
+                            premium_pct = premium / option_price * 100
+                            st.write(f"💸 Premium: **{format_currency(premium)}** ({premium_pct:.0f}%)")
+                    with col2:
+                        st.write("**Profit Scenarios**")
+                        if market_price_input < option_price:
+                            potential_gain = (option_price - market_price_input) / market_price_input * 100
+                            st.metric("Upside to Fair Value", f"+{potential_gain:.0f}%")
+                    with col3:
+                        st.write("**Suggested Trade**")
+                        if "BUY" in recommendation:
+                            st.write("✅ **BUY** this option")
+                            st.write(f"💰 Risk per contract: **{format_currency(market_price_input * 100)}**")
+                        elif "SELL" in recommendation:
+                            st.write("❌ **AVOID** buying")
+                            st.write("💡 Consider selling if you own")
+                        else:
+                            st.write("⏸️ **WAIT** for better price")
+                    
+                    # Add to Portfolio buttons
+                    col1, col2 = st.columns(2)
+                    with col1:
+                        quantity = st.number_input("Quantity (contracts):", value=1, min_value=1, step=1, key="trade_quantity")
+                        if st.button("📝 Add to Real Portfolio", key="add_real"):
+                            add_position(ticker, strike, option_type, option_price, quantity, expiration_date.strftime('%Y-%m-%d'), is_paper=False)
+                            st.success(f"Added {quantity} contract(s) to Real Portfolio")
+                    
+                    with col2:
+                        if st.button("🎮 Add to Paper Trading", key="add_paper"):
+                            add_position(ticker, strike, option_type, option_price, quantity, expiration_date.strftime('%Y-%m-%d'), is_paper=True)
+                            st.success(f"Added {quantity} contract(s) to Paper Trading")
+                    
+                    # Position Size Calculator
+                    with st.expander("💰 Position Size Calculator"):
+                        st.subheader("Risk Management")
+                        
+                        col1, col2 = st.columns(2)
+                        with col1:
+                            account_size = st.number_input("Account Size ($):", value=10000, step=1000, key="account_size", format="%d")
+                        with col2:
+                            risk_percent = st.number_input("Risk Per Trade (%):", value=2.0, step=0.5, key="risk_percent")
+                        
+                        risk_percent_decimal = risk_percent / 100
+                        max_risk = account_size * risk_percent_decimal
+                        
+                        st.metric("Max Risk per Trade", format_currency(max_risk))
+                        st.caption(f"Based on {risk_percent:.1f}% of {format_currency(account_size)} account")
+                        
+                        st.markdown("---")
+                        
+                        if market_price_input and market_price_input > 0:
+                            contracts = int(max_risk / (market_price_input * 100))
+                            total_risk = contracts * market_price_input * 100
+                            total_position_value = contracts * market_price_input * 100
+                            
+                            col1, col2, col3 = st.columns(3)
+                            with col1:
+                                st.metric("Max Contracts", contracts)
+                            with col2:
+                                st.metric("Total Risk", format_currency(total_risk))
+                            with col3:
+                                st.metric("Position Value", format_currency(total_position_value))
+                            
+                            st.markdown("---")
+                            
+                            if contracts > 0:
+                                st.success(f"✅ **Recommended Position:** Buy **{contracts} contract(s)** at {format_currency(market_price_input)} each")
+                                st.caption(f"• Total cost: {format_currency(total_position_value)}")
+                                st.caption(f"• Risk: {format_currency(total_risk)} ({risk_percent:.1f}% of account)")
+                                if contracts > 5:
+                                    st.warning(f"⚠️ {contracts} contracts is a large position - consider reducing size")
+                            else:
+                                st.warning(f"⚠️ Account too small for 1 contract")
+                                st.caption(f"Minimum required: {format_currency(market_price_input * 100)}")
+                        else:
+                            st.info("📝 Enter the option market price above to calculate position size")
+                else:
+                    st.info("📝 Enter the actual option market price to get a trading recommendation")
             else:
                 st.error("Please select a future expiration date")
             
@@ -1132,7 +1284,6 @@ with tab3:
         total_cost = 0
         
         for pos_id, pos in st.session_state.positions.items():
-            # Get current price for the option (simplified)
             current_option_price = 0
             current_value = current_option_price * pos['quantity'] * 100
             cost = pos['entry_price'] * pos['quantity'] * 100
@@ -1223,7 +1374,6 @@ with tab4:
                     st.write(f"**Entry Date:** {pos['entry_date']}")
                 with col2:
                     st.write(f"**Expiration:** {pos['expiration']}")
-                    # Calculate current theoretical price
                     S = info.get('currentPrice', info.get('regularMarketPrice', 0)) if 'info' in locals() else 0
                     T = max(0.01, (datetime.strptime(pos['expiration'], '%Y-%m-%d').date() - date.today()).days / 365)
                     current_opt_price, _, _, _, _ = calculate_option_price(
