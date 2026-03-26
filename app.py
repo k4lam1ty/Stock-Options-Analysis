@@ -25,12 +25,6 @@ def format_number(value):
         return "0"
     return f"{value:,.0f}"
 
-def format_number_decimal(value, decimals=2):
-    """Format number with commas and decimals"""
-    if value is None or value == 0:
-        return "0"
-    return f"{value:,.{decimals}f}"
-
 def format_percentage(value):
     """Format percentage with commas"""
     if value is None:
@@ -62,7 +56,7 @@ def format_volume(value):
         return f"{value:,.0f}"
 
 # ============================================================
-# SESSION STATE FOR WATCHLIST
+# SESSION STATE
 # ============================================================
 if 'watchlist' not in st.session_state:
     st.session_state.watchlist = []
@@ -346,7 +340,7 @@ if ticker:
         else:
             six_month_return = 0
         
-        # Volatility calculation based on user selection
+        # Volatility calculation
         if volatility_source == "Historical Volatility (from price data)":
             if len(hist) > 20:
                 daily_returns = hist['Close'].pct_change().dropna()
@@ -376,7 +370,7 @@ if ticker:
         asset_type = "Index/ETF" if is_index_ticker else "Stock"
         
         # ============================================================
-        # HEADER METRICS (FULLY FORMATTED)
+        # HEADER METRICS
         # ============================================================
         st.subheader(f"📊 {ticker} - {info.get('longName', ticker)} ({asset_type})")
         
@@ -479,7 +473,7 @@ if ticker:
         st.markdown("---")
         
         # ============================================================
-        # COMPANY INFORMATION (FULLY FORMATTED)
+        # COMPANY INFORMATION
         # ============================================================
         col1, col2 = st.columns(2)
         with col1:
@@ -508,7 +502,7 @@ if ticker:
         st.markdown("---")
         
         # ============================================================
-        # FINANCIAL STATEMENTS (FULLY FORMATTED)
+        # FINANCIAL STATEMENTS
         # ============================================================
         if not is_index_ticker and not income_statement.empty:
             st.subheader("💰 Key Financials (in Millions)")
@@ -606,36 +600,84 @@ if ticker:
                     st.metric("Vega (per 1%)", f"{vega:.4f}")
                 
                 # ============================================================
-                # PROBABILITY CALCULATOR
+                # PROBABILITY CALCULATOR (CORRECTED)
                 # ============================================================
                 st.markdown("---")
                 st.subheader("📊 Probability Calculator")
                 
                 col1, col2 = st.columns(2)
+                
                 with col1:
                     st.write("**Probability of Touching a Price**")
+                    st.caption("The probability that the stock will touch this price at any time before expiration")
+                    
                     target_price = st.number_input("Target Price ($):", value=current_price, step=1.0, key="prob_target", format="%.2f")
-                    if target_price > current_price:
-                        z_score = (log(target_price / current_price)) / (volatility / 100 * sqrt(days/365))
-                        prob_up = norm.cdf(z_score) * 100
-                        st.metric(f"Probability to reach {format_currency(target_price)}", f"{prob_up:.1f}%")
-                    elif target_price < current_price:
-                        z_score = (log(current_price / target_price)) / (volatility / 100 * sqrt(days/365))
-                        prob_down = norm.cdf(z_score) * 100
-                        st.metric(f"Probability to reach {format_currency(target_price)}", f"{prob_down:.1f}%")
+                    
+                    if target_price != current_price:
+                        # Calculate drift and volatility
+                        mu = (risk_free_rate - dividend_yield)  # Expected return
+                        sigma = volatility / 100
+                        T_days = days / 365
+                        
+                        if target_price > current_price:
+                            # Probability of touching upside barrier
+                            # Formula: P(touch) = (S/K)^(2*mu/sigma^2)
+                            power = (2 * mu) / (sigma ** 2)
+                            prob_touch = (current_price / target_price) ** power
+                            prob_touch = max(0, min(prob_touch, 1.0))
+                            
+                            st.metric(f"Probability to touch ${target_price:,.2f}", f"{prob_touch*100:.1f}%")
+                            st.caption(f"Upside barrier (touch at any time)")
+                            
+                        elif target_price < current_price:
+                            # Probability of touching downside barrier
+                            power = (2 * mu) / (sigma ** 2)
+                            prob_touch = (target_price / current_price) ** (-power)
+                            prob_touch = max(0, min(prob_touch, 1.0))
+                            
+                            st.metric(f"Probability to touch ${target_price:,.2f}", f"{prob_touch*100:.1f}%")
+                            st.caption(f"Downside barrier (touch at any time)")
                     else:
                         st.info("Enter a different target price")
                 
                 with col2:
+                    st.write("**Probability of Closing Above/Below**")
+                    st.caption("The probability that the stock closes above/below a price at expiration")
+                    
+                    close_price = st.number_input("Price at Expiration ($):", value=current_price, step=1.0, key="close_target", format="%.2f")
+                    
+                    if close_price != current_price:
+                        # Calculate d2 for probability of closing above/below
+                        d2_close = (log(current_price / close_price) + (risk_free_rate - dividend_yield - (volatility/100)**2 / 2) * T) / ((volatility/100) * sqrt(T))
+                        
+                        if close_price > current_price:
+                            prob_above = norm.cdf(-d2_close) * 100
+                            st.metric(f"Probability to close above ${close_price:,.2f}", f"{prob_above:.1f}%")
+                            st.caption(f"Stock finishes above target at expiration")
+                        else:
+                            prob_below = norm.cdf(d2_close) * 100
+                            st.metric(f"Probability to close below ${close_price:,.2f}", f"{prob_below:.1f}%")
+                            st.caption(f"Stock finishes below target at expiration")
+                    else:
+                        st.info("Enter a different price")
+                
+                # Expected Move
+                st.markdown("---")
+                col1, col2 = st.columns(2)
+                with col1:
                     st.write("**Expected Move**")
                     expected_move = current_price * (volatility / 100) * sqrt(days/365)
-                    st.metric("Expected Move (±)", format_currency(expected_move))
+                    st.metric("1 Standard Deviation Move (±)", format_currency(expected_move))
                     st.caption(f"Based on {volatility:.0f}% volatility over {days} days")
+                
+                with col2:
+                    st.write("**Option Expiration Probability**")
                     if option_type == "Call":
                         prob_itm = norm.cdf(d2) * 100
+                        st.metric("Probability ITM at Expiration", f"{prob_itm:.1f}%")
                     else:
                         prob_itm = norm.cdf(-d2) * 100
-                    st.metric("Probability ITM at Expiration", f"{prob_itm:.1f}%")
+                        st.metric("Probability ITM at Expiration", f"{prob_itm:.1f}%")
                 
                 # ============================================================
                 # TRADING SIGNAL & RECOMMENDATION SECTION
@@ -654,8 +696,6 @@ if ticker:
                         st.metric("Price Difference", format_currency(price_diff), delta=f"{diff_percent:+.1f}%", delta_color="normal")
                     else:
                         st.info("Enter market price to see difference")
-                        price_diff = 0
-                        diff_percent = 0
                 
                 if market_price_input is not None and market_price_input > 0 and option_price > 0:
                     if diff_percent < -15:
@@ -726,7 +766,7 @@ if ticker:
                             st.write("⏸️ **WAIT** for better price")
                     
                     # ============================================================
-                    # POSITION SIZE CALCULATOR (FULLY FORMATTED)
+                    # POSITION SIZE CALCULATOR
                     # ============================================================
                     with st.expander("💰 Position Size Calculator"):
                         st.subheader("Risk Management")
