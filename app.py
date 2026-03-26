@@ -6,6 +6,9 @@ from datetime import datetime, date, timedelta
 from math import log, sqrt, exp
 from scipy.stats import norm
 import time
+import requests
+import feedparser
+from bs4 import BeautifulSoup
 
 st.set_page_config(page_title="Stock Analysis Dashboard", layout="wide")
 
@@ -54,6 +57,90 @@ def format_volume(value):
         return f"{value/1_000:,.1f}K"
     else:
         return f"{value:,.0f}"
+
+# ============================================================
+# NEWS FUNCTION - MULTIPLE SOURCES
+# ============================================================
+
+def get_news(ticker, max_articles=10):
+    """Fetch news from multiple sources"""
+    news_items = []
+    
+    # Method 1: Try Yahoo Finance (original method)
+    try:
+        stock = yf.Ticker(ticker)
+        yf_news = stock.news
+        if yf_news:
+            for article in yf_news[:max_articles]:
+                news_items.append({
+                    'title': article.get('title', 'No title'),
+                    'link': article.get('link', '#'),
+                    'publisher': article.get('publisher', 'Yahoo Finance'),
+                    'date': article.get('providerPublishTime', None),
+                    'source': 'Yahoo Finance'
+                })
+    except:
+        pass
+    
+    # Method 2: Google News RSS (more reliable)
+    try:
+        search_term = ticker + " stock"
+        google_url = f"https://news.google.com/rss/search?q={search_term}&hl=en-US&gl=US&ceid=US:en"
+        
+        feed = feedparser.parse(google_url)
+        
+        for entry in feed.entries[:max_articles]:
+            publisher = entry.get('source', {}).get('title', 'Google News') if hasattr(entry, 'source') else 'Google News'
+            
+            pub_date = None
+            if hasattr(entry, 'published_parsed'):
+                pub_date = time.mktime(entry.published_parsed)
+            
+            news_items.append({
+                'title': entry.title,
+                'link': entry.link,
+                'publisher': publisher,
+                'date': pub_date,
+                'source': 'Google News'
+            })
+    except Exception as e:
+        pass
+    
+    # Method 3: Yahoo Finance RSS (alternative)
+    try:
+        yahoo_rss_url = f"https://feeds.finance.yahoo.com/rss/2.0/headline?s={ticker}&region=US&lang=en-US"
+        feed = feedparser.parse(yahoo_rss_url)
+        
+        for entry in feed.entries[:max_articles]:
+            is_duplicate = False
+            for existing in news_items:
+                if existing['title'] == entry.title:
+                    is_duplicate = True
+                    break
+            
+            if not is_duplicate:
+                news_items.append({
+                    'title': entry.title,
+                    'link': entry.link,
+                    'publisher': 'Yahoo Finance',
+                    'date': None,
+                    'source': 'Yahoo Finance RSS'
+                })
+    except:
+        pass
+    
+    # Remove duplicates by title
+    seen_titles = set()
+    unique_news = []
+    for item in news_items:
+        if item['title'] not in seen_titles:
+            seen_titles.add(item['title'])
+            unique_news.append(item)
+    
+    # Sort by date (if available)
+    unique_news.sort(key=lambda x: x['date'] if x['date'] else 0, reverse=True)
+    
+    return unique_news[:max_articles]
 
 # ============================================================
 # SESSION STATE
@@ -113,16 +200,6 @@ def get_earnings_surprises(ticker):
         return None
     except:
         return None
-
-def get_news(ticker):
-    try:
-        stock = yf.Ticker(ticker)
-        news = stock.news
-        if news:
-            return news[:10]
-        return []
-    except:
-        return []
 
 def get_implied_volatility(ticker, current_price, option_type):
     try:
@@ -216,6 +293,7 @@ def get_stock_data(ticker):
     }
 
 def calculate_rsi(data, window=14):
+    """Calculate RSI - Correct formula"""
     delta = data.diff()
     gain = (delta.where(delta > 0, 0)).rolling(window=window).mean()
     loss = (-delta.where(delta < 0, 0)).rolling(window=window).mean()
@@ -234,103 +312,40 @@ with st.sidebar:
     if theme == "Light":
         st.markdown("""
         <style>
-        /* Main background */
         .stApp { background-color: #ffffff; }
-        
-        /* All text - make everything black */
-        .stMarkdown, .stMarkdown p, .stMarkdown h1, .stMarkdown h2, .stMarkdown h3, .stMarkdown h4, .stMarkdown h5, .stMarkdown h6,
-        .stText, .stTextInput, .stTextArea, .stNumberInput, .stSelectbox, .stMultiSelect,
-        .stMetric, .stMetric label, .stMetric .stMetric, .stMetric p,
-        .stDataFrame, .stDataFrame div, .stDataFrame span,
-        .stExpander, .stExpander summary, .stExpander p,
-        .stInfo, .stWarning, .stError, .stSuccess,
+        .stMarkdown, .stMarkdown p, .stMarkdown h1, .stMarkdown h2, .stMarkdown h3, .stMarkdown h4,
+        .stText, .stTextInput, .stTextArea, .stNumberInput, .stSelectbox,
+        .stMetric, .stMetric label, .stMetric p,
+        .stDataFrame, .stDataFrame div,
+        .stExpander, .stExpander summary,
         .stButton button, .stButton button p,
         .stRadio label, .stCheckbox label,
         .stCaption, .stCaption p {
             color: #000000 !important;
         }
-        
-        /* Sidebar specific */
-        .css-1d391kg, .css-1lcbmhc, .stSidebar, .stSidebar .stMarkdown {
+        .stSidebar, .stSidebar .stMarkdown {
             background-color: #f5f5f5;
         }
-        
-        .stSidebar .stMarkdown, .stSidebar p, .stSidebar label, .stSidebar h1, .stSidebar h2, .stSidebar h3 {
-            color: #000000 !important;
-        }
-        
-        /* Input fields - white background with black text */
-        input, .stTextInput input, .stNumberInput input, .stSelectbox select, .stTextArea textarea {
+        input, .stTextInput input, .stNumberInput input, .stSelectbox select {
             background-color: #ffffff !important;
             color: #000000 !important;
             border: 1px solid #cccccc !important;
         }
-        
-        /* Metrics cards */
         .stMetric {
             background-color: #f8f9fa;
             border-radius: 10px;
             padding: 10px;
             border: 1px solid #e9ecef;
         }
-        
-        .stMetric label, .stMetric .stMetric {
-            color: #000000 !important;
-        }
-        
-        /* DataFrames */
-        .dataframe, .stDataFrame, .stDataFrame table, .stDataFrame th, .stDataFrame td {
-            color: #000000 !important;
-            background-color: #ffffff !important;
-        }
-        
-        .stDataFrame th {
-            background-color: #f0f0f0 !important;
-            color: #000000 !important;
-        }
-        
-        /* Buttons */
-        .stButton button {
-            background-color: #f0f0f0 !important;
-            color: #000000 !important;
-            border: 1px solid #cccccc !important;
-        }
-        
-        .stButton button:hover {
-            background-color: #e0e0e0 !important;
-        }
-        
-        /* Expander */
-        .stExpander {
-            background-color: #f8f9fa;
-            border: 1px solid #e9ecef;
-            border-radius: 5px;
-        }
-        
-        .stExpander summary {
-            color: #000000 !important;
-        }
-        
-        /* Metric values - large numbers */
         div[data-testid="stMetricValue"] {
             color: #000000 !important;
             font-weight: bold;
         }
-        
-        /* Metric labels */
         div[data-testid="stMetricLabel"] {
             color: #555555 !important;
         }
-        
-        /* Headers */
         h1, h2, h3, h4, h5, h6 {
             color: #000000 !important;
-        }
-        
-        /* Code blocks */
-        code, pre {
-            background-color: #f5f5f5 !important;
-            color: #333333 !important;
         }
         </style>
         """, unsafe_allow_html=True)
@@ -340,7 +355,6 @@ with st.sidebar:
         .stApp { background-color: #1e1e2e; }
         .stMarkdown { color: #cdd6f4; }
         .stMetric { background-color: #313244; }
-        .stMetric label, .stMetric .stMetric { color: #cdd6f4; }
         div[data-testid="stMetricValue"] { color: #a6e3a1; }
         </style>
         """, unsafe_allow_html=True)
@@ -699,7 +713,7 @@ if ticker:
                     st.metric("Vega (per 1%)", f"{vega:.4f}")
                 
                 # ============================================================
-                # PROBABILITY CALCULATOR
+                # PROBABILITY CALCULATOR (CORRECTED FORMULAS)
                 # ============================================================
                 st.markdown("---")
                 st.subheader("📊 Probability Calculator")
@@ -712,22 +726,41 @@ if ticker:
                     
                     target_price = st.number_input("Target Price ($):", value=current_price, step=1.0, key="prob_target", format="%.2f")
                     
-                    if target_price != current_price:
-                        mu = (risk_free_rate - dividend_yield)
+                    if target_price != current_price and target_price > 0:
+                        mu = risk_free_rate - dividend_yield
                         sigma = volatility / 100
-                        T_days = days / 365
+                        T_years = days / 365
                         
                         if target_price > current_price:
-                            power = (2 * mu) / (sigma ** 2)
-                            prob_touch = (current_price / target_price) ** power
-                            prob_touch = max(0, min(prob_touch, 1.0))
-                            st.metric(f"Probability to touch ${target_price:,.2f}", f"{prob_touch*100:.1f}%")
+                            # Upside barrier
+                            d1 = (log(current_price / target_price) + mu * T_years) / (sigma * sqrt(T_years))
+                            term1 = norm.cdf(d1)
+                            
+                            exponent = (2 * mu) / (sigma ** 2)
+                            factor = (target_price / current_price) ** exponent
+                            d2 = (log(current_price / target_price) - mu * T_years) / (sigma * sqrt(T_years))
+                            term2 = factor * norm.cdf(d2)
+                            
+                            prob_touch = term1 + term2
+                        else:
+                            # Downside barrier
+                            d1 = (log(current_price / target_price) + mu * T_years) / (sigma * sqrt(T_years))
+                            term1 = norm.cdf(-d1)
+                            
+                            exponent = (2 * mu) / (sigma ** 2)
+                            factor = (target_price / current_price) ** exponent
+                            d2 = (log(current_price / target_price) - mu * T_years) / (sigma * sqrt(T_years))
+                            term2 = factor * norm.cdf(-d2)
+                            
+                            prob_touch = term1 + term2
+                        
+                        prob_touch = max(0, min(prob_touch, 1.0))
+                        
+                        st.metric(f"Probability to touch ${target_price:,.2f}", f"{prob_touch*100:.1f}%")
+                        
+                        if target_price > current_price:
                             st.caption("Upside barrier (touch at any time)")
-                        elif target_price < current_price:
-                            power = (2 * mu) / (sigma ** 2)
-                            prob_touch = (target_price / current_price) ** (-power)
-                            prob_touch = max(0, min(prob_touch, 1.0))
-                            st.metric(f"Probability to touch ${target_price:,.2f}", f"{prob_touch*100:.1f}%")
+                        else:
                             st.caption("Downside barrier (touch at any time)")
                     else:
                         st.info("Enter a different target price")
@@ -738,15 +771,17 @@ if ticker:
                     
                     close_price = st.number_input("Price at Expiration ($):", value=current_price, step=1.0, key="close_target", format="%.2f")
                     
-                    if close_price != current_price:
+                    if close_price != current_price and close_price > 0:
                         d2_close = (log(current_price / close_price) + (risk_free_rate - dividend_yield - (volatility/100)**2 / 2) * T) / ((volatility/100) * sqrt(T))
                         
                         if close_price > current_price:
                             prob_above = norm.cdf(-d2_close) * 100
                             st.metric(f"Probability to close above ${close_price:,.2f}", f"{prob_above:.1f}%")
+                            st.caption(f"Stock finishes above target at expiration")
                         else:
                             prob_below = norm.cdf(d2_close) * 100
                             st.metric(f"Probability to close below ${close_price:,.2f}", f"{prob_below:.1f}%")
+                            st.caption(f"Stock finishes below target at expiration")
                     else:
                         st.info("Enter a different price")
                 
@@ -910,19 +945,41 @@ if ticker:
         # ============================================================
         st.markdown("---")
         st.subheader("📰 Real-Time News")
-        news = get_news(ticker)
+        
+        with st.spinner(f"Fetching latest news for {ticker}..."):
+            news = get_news(ticker, max_articles=10)
+        
         if news:
+            st.caption(f"Found {len(news)} recent news articles for {ticker}")
+            
             for i, article in enumerate(news[:10]):
                 title = article.get('title', 'No title')
                 link = article.get('link', '#')
                 publisher = article.get('publisher', 'Unknown')
-                pub_date = article.get('providerPublishTime', None)
-                date_str = datetime.fromtimestamp(pub_date).strftime('%Y-%m-%d %H:%M') if pub_date else "Recently"
-                st.markdown(f"**{i+1}. [{title}]({link})**")
-                st.caption(f"📰 {publisher} | 🕐 {date_str}")
-                st.markdown("---")
+                source = article.get('source', 'Unknown')
+                pub_date = article.get('date', None)
+                
+                if pub_date:
+                    date_str = datetime.fromtimestamp(pub_date).strftime('%Y-%m-%d %H:%M')
+                else:
+                    date_str = "Recently"
+                
+                bg_color = "#f8f9fa" if theme == "Light" else "#2d2d3a"
+                link_color = "#1e1e2e" if theme == "Light" else "#cdd6f4"
+                
+                st.markdown(f"""
+                <div style="background-color: {bg_color}; border-radius: 8px; padding: 12px; margin-bottom: 10px; border-left: 4px solid #89b4fa;">
+                    <p style="margin: 0; font-weight: bold;">
+                        <a href="{link}" target="_blank" style="text-decoration: none; color: {link_color};">{title}</a>
+                    </p>
+                    <p style="margin: 5px 0 0 0; font-size: 12px; color: {'#555' if theme == 'Light' else '#999'};">
+                        📰 {publisher} | 🕐 {date_str} | 📍 {source}
+                    </p>
+                </div>
+                """, unsafe_allow_html=True)
         else:
-            st.info(f"No recent news found for {ticker}")
+            st.info(f"No recent news found for {ticker}. Try a different ticker or check back later.")
+            st.caption("💡 Tip: You can also search for news manually on Google Finance or Yahoo Finance")
         
         # ============================================================
         # AUTO-REFRESH
