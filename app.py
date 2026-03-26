@@ -59,14 +59,14 @@ def format_volume(value):
         return f"{value:,.0f}"
 
 # ============================================================
-# NEWS FUNCTION - MULTIPLE SOURCES
+# NEWS FUNCTION
 # ============================================================
 
 def get_news(ticker, max_articles=10):
     """Fetch news from multiple sources"""
     news_items = []
     
-    # Method 1: Try Yahoo Finance (original method)
+    # Method 1: Yahoo Finance
     try:
         stock = yf.Ticker(ticker)
         yf_news = stock.news
@@ -82,16 +82,14 @@ def get_news(ticker, max_articles=10):
     except:
         pass
     
-    # Method 2: Google News RSS (more reliable)
+    # Method 2: Google News RSS
     try:
         search_term = ticker + " stock"
         google_url = f"https://news.google.com/rss/search?q={search_term}&hl=en-US&gl=US&ceid=US:en"
-        
         feed = feedparser.parse(google_url)
         
         for entry in feed.entries[:max_articles]:
             publisher = entry.get('source', {}).get('title', 'Google News') if hasattr(entry, 'source') else 'Google News'
-            
             pub_date = None
             if hasattr(entry, 'published_parsed'):
                 pub_date = time.mktime(entry.published_parsed)
@@ -103,33 +101,10 @@ def get_news(ticker, max_articles=10):
                 'date': pub_date,
                 'source': 'Google News'
             })
-    except Exception as e:
-        pass
-    
-    # Method 3: Yahoo Finance RSS (alternative)
-    try:
-        yahoo_rss_url = f"https://feeds.finance.yahoo.com/rss/2.0/headline?s={ticker}&region=US&lang=en-US"
-        feed = feedparser.parse(yahoo_rss_url)
-        
-        for entry in feed.entries[:max_articles]:
-            is_duplicate = False
-            for existing in news_items:
-                if existing['title'] == entry.title:
-                    is_duplicate = True
-                    break
-            
-            if not is_duplicate:
-                news_items.append({
-                    'title': entry.title,
-                    'link': entry.link,
-                    'publisher': 'Yahoo Finance',
-                    'date': None,
-                    'source': 'Yahoo Finance RSS'
-                })
     except:
         pass
     
-    # Remove duplicates by title
+    # Remove duplicates
     seen_titles = set()
     unique_news = []
     for item in news_items:
@@ -137,9 +112,7 @@ def get_news(ticker, max_articles=10):
             seen_titles.add(item['title'])
             unique_news.append(item)
     
-    # Sort by date (if available)
     unique_news.sort(key=lambda x: x['date'] if x['date'] else 0, reverse=True)
-    
     return unique_news[:max_articles]
 
 # ============================================================
@@ -293,7 +266,6 @@ def get_stock_data(ticker):
     }
 
 def calculate_rsi(data, window=14):
-    """Calculate RSI - Correct formula"""
     delta = data.diff()
     gain = (delta.where(delta > 0, 0)).rolling(window=window).mean()
     loss = (-delta.where(delta < 0, 0)).rolling(window=window).mean()
@@ -713,14 +685,14 @@ if ticker:
                     st.metric("Vega (per 1%)", f"{vega:.4f}")
                 
                 # ============================================================
-                # PROBABILITY CALCULATOR (IMPROVED - ABOVE/BELOW OPTIONS)
+                # PROBABILITY CALCULATOR (FIXED)
                 # ============================================================
                 st.markdown("---")
                 st.subheader("📊 Probability Calculator")
                 
                 col1, col2 = st.columns(2)
                 
-                # ========== LEFT COLUMN: TOUCH PROBABILITY ==========
+                # LEFT COLUMN: TOUCH PROBABILITY
                 with col1:
                     st.write("**Probability of Touching a Price**")
                     st.caption("The probability that the stock will touch this price at any time before expiration")
@@ -732,51 +704,52 @@ if ticker:
                         sigma = volatility / 100
                         T_years = days / 365
                         
-                        if target_price > current_price:
-                            # Upside barrier
-                            d1 = (log(current_price / target_price) + mu * T_years) / (sigma * sqrt(T_years))
-                            term1 = norm.cdf(d1)
-                            
-                            exponent = (2 * mu) / (sigma ** 2)
-                            factor = (target_price / current_price) ** exponent
-                            d2 = (log(current_price / target_price) - mu * T_years) / (sigma * sqrt(T_years))
-                            term2 = factor * norm.cdf(d2)
-                            
-                            prob_touch = term1 + term2
-                            direction = "above"
+                        if T_years > 0 and sigma > 0:
+                            try:
+                                if target_price > current_price:
+                                    # Upside barrier
+                                    d1 = (log(current_price / target_price) + mu * T_years) / (sigma * sqrt(T_years))
+                                    term1 = norm.cdf(d1)
+                                    
+                                    exponent = (2 * mu) / (sigma ** 2)
+                                    factor = (target_price / current_price) ** exponent
+                                    d2 = (log(current_price / target_price) - mu * T_years) / (sigma * sqrt(T_years))
+                                    term2 = factor * norm.cdf(d2)
+                                    
+                                    prob_touch = term1 + term2
+                                else:
+                                    # Downside barrier
+                                    d1 = (log(current_price / target_price) + mu * T_years) / (sigma * sqrt(T_years))
+                                    term1 = norm.cdf(-d1)
+                                    
+                                    exponent = (2 * mu) / (sigma ** 2)
+                                    factor = (target_price / current_price) ** exponent
+                                    d2 = (log(current_price / target_price) - mu * T_years) / (sigma * sqrt(T_years))
+                                    term2 = factor * norm.cdf(-d2)
+                                    
+                                    prob_touch = term1 + term2
+                                
+                                prob_touch = max(0, min(prob_touch, 1.0))
+                                st.metric(f"Probability to touch ${target_price:,.2f}", f"{prob_touch*100:.1f}%")
+                                
+                                if target_price > current_price:
+                                    st.caption(f"Stock touches ${target_price:,.2f} (upside) at any time")
+                                else:
+                                    st.caption(f"Stock touches ${target_price:,.2f} (downside) at any time")
+                            except:
+                                st.error("Calculation error - try a different price")
                         else:
-                            # Downside barrier
-                            d1 = (log(current_price / target_price) + mu * T_years) / (sigma * sqrt(T_years))
-                            term1 = norm.cdf(-d1)
-                            
-                            exponent = (2 * mu) / (sigma ** 2)
-                            factor = (target_price / current_price) ** exponent
-                            d2 = (log(current_price / target_price) - mu * T_years) / (sigma * sqrt(T_years))
-                            term2 = factor * norm.cdf(-d2)
-                            
-                            prob_touch = term1 + term2
-                            direction = "below"
-                        
-                        prob_touch = max(0, min(prob_touch, 1.0))
-                        
-                        st.metric(f"Probability to touch ${target_price:,.2f}", f"{prob_touch*100:.1f}%")
-                        
-                        if direction == "above":
-                            st.caption(f"Stock touches ${target_price:,.2f} from above at any time")
-                        else:
-                            st.caption(f"Stock touches ${target_price:,.2f} from below at any time")
+                            st.error("Time to expiration or volatility too small")
                     else:
                         st.info("Enter a different target price")
                 
-                # ========== RIGHT COLUMN: CLOSING PROBABILITY ==========
+                # RIGHT COLUMN: CLOSING PROBABILITY
                 with col2:
                     st.write("**Probability of Closing Above/Below**")
                     st.caption("The probability that the stock closes above or below a price at expiration")
                     
-                    # Price input
                     close_price = st.number_input("Price at Expiration ($):", value=current_price, step=1.0, key="close_target", format="%.2f")
                     
-                    # Direction selection
                     close_direction = st.radio(
                         "Direction:",
                         ["Above", "Below"],
@@ -786,32 +759,42 @@ if ticker:
                     )
                     
                     if close_price != current_price and close_price > 0:
-                        d2_close = (log(current_price / close_price) + (risk_free_rate - dividend_yield - (volatility/100)**2 / 2) * T) / ((volatility/100) * sqrt(T))
+                        T_years = days / 365
+                        sigma = volatility / 100
                         
-                        if close_direction == "Above":
-                            prob_close = norm.cdf(-d2_close) * 100
-                            st.metric(f"Probability to close above ${close_price:,.2f}", f"{prob_close:.1f}%")
-                            st.caption(f"Stock finishes above {close_price:,.2f} at expiration")
+                        if T_years > 0 and sigma > 0:
+                            try:
+                                # Calculate d2 for closing probability
+                                d2_close = (log(current_price / close_price) + (risk_free_rate - dividend_yield - sigma**2 / 2) * T_years) / (sigma * sqrt(T_years))
+                                
+                                if close_direction == "Above":
+                                    prob_close = norm.cdf(-d2_close) * 100
+                                    st.metric(f"Probability to close above ${close_price:,.2f}", f"{prob_close:.1f}%")
+                                    st.caption(f"Stock finishes above {close_price:,.2f} at expiration")
+                                else:
+                                    prob_close = norm.cdf(d2_close) * 100
+                                    st.metric(f"Probability to close below ${close_price:,.2f}", f"{prob_close:.1f}%")
+                                    st.caption(f"Stock finishes below {close_price:,.2f} at expiration")
+                            except:
+                                st.error("Calculation error - try a different price")
                         else:
-                            prob_close = norm.cdf(d2_close) * 100
-                            st.metric(f"Probability to close below ${close_price:,.2f}", f"{prob_close:.1f}%")
-                            st.caption(f"Stock finishes below {close_price:,.2f} at expiration")
+                            st.error("Time to expiration or volatility too small")
                     else:
                         st.info("Enter a different price")
                 
-                # ========== EXPECTED MOVE ROW ==========
+                # EXPECTED MOVE ROW
                 st.markdown("---")
                 col1, col2 = st.columns(2)
                 with col1:
                     st.write("**Expected Move**")
-                    expected_move = current_price * (volatility / 100) * sqrt(days/365)
+                    T_years = days / 365
+                    expected_move = current_price * (volatility / 100) * sqrt(T_years)
                     st.metric("1 Standard Deviation Move (±)", format_currency(expected_move))
                     st.caption(f"Based on {volatility:.0f}% volatility over {days} days")
                 
                 with col2:
                     st.write("**Option Expiration Probability**")
                     
-                    # Option direction selector for ITM probability
                     option_direction = st.radio(
                         "Option Type for ITM:",
                         ["Call (Price > Strike)", "Put (Price < Strike)"],
@@ -915,9 +898,7 @@ if ticker:
                         else:
                             st.write("⏸️ **WAIT** for better price")
                     
-                    # ============================================================
                     # POSITION SIZE CALCULATOR
-                    # ============================================================
                     with st.expander("💰 Position Size Calculator"):
                         st.subheader("Risk Management")
                         
