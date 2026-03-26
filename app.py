@@ -871,59 +871,107 @@ with tab1:
                 with col5:
                     st.metric("Vega (per 1%)", f"{vega:.4f}")
                 
-                # PROBABILITY CALCULATOR
+                # ============================================================
+                # PROBABILITY CALCULATOR (CORRECTED)
+                # ============================================================
                 st.markdown("---")
                 st.subheader("📊 Probability Calculator")
+                
                 col1, col2 = st.columns(2)
+                
+                # LEFT COLUMN: TOUCH PROBABILITY
                 with col1:
                     st.write("**Probability of Stock Touching a Price**")
+                    st.caption("The probability that the stock will touch this price at any time before expiration")
+                    
                     target_price = st.number_input("Target Price ($):", value=current_price, step=1.0, key="prob_target", format="%.2f")
+                    
                     if target_price != current_price and target_price > 0 and days > 0:
                         sigma = vol_used
                         T_years = days / 365
                         mu = risk_free_rate - dividend_yield
+                        
                         if target_price > current_price:
                             d1 = (log(target_price / current_price) - (mu - 0.5 * sigma**2) * T_years) / (sigma * sqrt(T_years))
                             prob_touch = norm.cdf(d1) * 100
-                            st.metric(f"Probability to reach ${target_price:,.2f}", f"{prob_touch:.1f}%")
+                            prob_touch = max(0.01, min(99.99, prob_touch))
+                            st.metric(f"Probability to touch ${target_price:,.2f}", f"{prob_touch:.1f}%")
+                            st.caption(f"Upside barrier")
                         else:
                             d1 = (log(current_price / target_price) - (mu - 0.5 * sigma**2) * T_years) / (sigma * sqrt(T_years))
                             prob_touch = norm.cdf(d1) * 100
-                            st.metric(f"Probability to reach ${target_price:,.2f}", f"{prob_touch:.1f}%")
+                            prob_touch = max(0.01, min(99.99, prob_touch))
+                            st.metric(f"Probability to touch ${target_price:,.2f}", f"{prob_touch:.1f}%")
+                            st.caption(f"Downside barrier")
                     else:
                         st.info("Enter a different target price")
+                
+                # RIGHT COLUMN: CLOSING PROBABILITY
                 with col2:
                     st.write("**Probability of Closing Above/Below**")
+                    st.caption("The probability that the stock closes above or below a price at expiration")
+                    
                     close_price = st.number_input("Price at Expiration ($):", value=current_price, step=1.0, key="close_target", format="%.2f")
-                    close_direction = st.radio("Direction:", ["Above", "Below"], index=0, key="close_direction", horizontal=True)
+                    
+                    close_direction = st.radio(
+                        "Direction:",
+                        ["Above", "Below"],
+                        index=0,
+                        key="close_direction",
+                        horizontal=True
+                    )
+                    
                     if close_price > 0 and days > 0:
                         sigma = vol_used
                         T_years = days / 365
+                        
                         d2 = (log(current_price / close_price) + (risk_free_rate - dividend_yield - 0.5 * sigma**2) * T_years) / (sigma * sqrt(T_years))
+                        
                         if close_direction == "Above":
                             prob_close = norm.cdf(-d2) * 100
+                            prob_close = max(0.01, min(99.99, prob_close))
                             st.metric(f"Probability to close above ${close_price:,.2f}", f"{prob_close:.1f}%")
+                            st.caption(f"Stock finishes above {close_price:,.2f} at expiration")
                         else:
                             prob_close = norm.cdf(d2) * 100
+                            prob_close = max(0.01, min(99.99, prob_close))
                             st.metric(f"Probability to close below ${close_price:,.2f}", f"{prob_close:.1f}%")
+                            st.caption(f"Stock finishes below {close_price:,.2f} at expiration")
                     else:
                         st.info("Enter a valid price")
+                
+                # EXPECTED MOVE AND ITM PROBABILITY
                 st.markdown("---")
                 col1, col2 = st.columns(2)
                 with col1:
                     st.write("**Expected Move**")
                     expected_move = current_price * vol_used * sqrt(days/365)
                     st.metric("1 Standard Deviation Move (±)", format_currency(expected_move))
+                
                 with col2:
-                    st.write("**Option Expiration Probability**")
-                    if option_type == "Call":
+                    st.write("**Option Expiration Probability (ITM)**")
+                    
+                    # Let user choose which option type for ITM probability
+                    itm_option_type = st.radio(
+                        "Calculate ITM probability for:",
+                        ["Call (Price > Strike)", "Put (Price < Strike)"],
+                        index=0 if option_type == "Call" else 1,
+                        key="itm_option_type",
+                        horizontal=True
+                    )
+                    
+                    if itm_option_type == "Call (Price > Strike)":
                         d2 = (log(current_price / strike) + (risk_free_rate - dividend_yield - vol_used**2 / 2) * (days/365)) / (vol_used * sqrt(days/365))
                         prob_itm = norm.cdf(d2) * 100
+                        prob_itm = max(0.01, min(99.99, prob_itm))
                         st.metric(f"Probability Call is ITM (Price > ${strike:,.2f})", f"{prob_itm:.1f}%")
+                        st.caption(f"Stock must close above ${strike:,.2f} at expiration")
                     else:
                         d2 = (log(current_price / strike) + (risk_free_rate - dividend_yield - vol_used**2 / 2) * (days/365)) / (vol_used * sqrt(days/365))
                         prob_itm = norm.cdf(-d2) * 100
+                        prob_itm = max(0.01, min(99.99, prob_itm))
                         st.metric(f"Probability Put is ITM (Price < ${strike:,.2f})", f"{prob_itm:.1f}%")
+                        st.caption(f"Stock must close below ${strike:,.2f} at expiration")
                 
                 # TRADE MANAGEMENT
                 st.markdown("---")
@@ -1103,7 +1151,6 @@ with tab2:
 with tab3:
     st.header("💰 Real Portfolio")
     if st.session_state.positions:
-        total_value = 0
         total_cost = 0
         for pos in st.session_state.positions.values():
             total_cost += pos['entry_price'] * pos['quantity'] * 100
