@@ -59,11 +59,11 @@ def format_volume(value):
         return f"{value:,.0f}"
 
 # ============================================================
-# NEWS FUNCTION
+# NEWS FUNCTION - MULTIPLE SOURCES WITH IMPORTANCE SORTING
 # ============================================================
 
-def get_news(ticker, max_articles=10):
-    """Fetch news from multiple sources"""
+def get_news(ticker, max_articles=15):
+    """Fetch news from multiple sources and sort by importance"""
     news_items = []
     
     # Method 1: Yahoo Finance
@@ -72,12 +72,33 @@ def get_news(ticker, max_articles=10):
         yf_news = stock.news
         if yf_news:
             for article in yf_news[:max_articles]:
+                importance = 50
+                title = article.get('title', '')
+                publisher = article.get('publisher', '')
+                
+                if 'bloomberg' in publisher.lower():
+                    importance += 30
+                elif 'reuters' in publisher.lower():
+                    importance += 25
+                elif 'wsj' in publisher.lower() or 'wall street' in publisher.lower():
+                    importance += 25
+                elif 'cnbc' in publisher.lower():
+                    importance += 20
+                elif 'yahoo' in publisher.lower():
+                    importance += 10
+                
+                important_keywords = ['earnings', 'acquisition', 'merger', 'ceo', 'lawsuit', 'fda', 'approval', 'bankruptcy', 'dividend', 'stock split']
+                for keyword in important_keywords:
+                    if keyword in title.lower():
+                        importance += 15
+                
                 news_items.append({
-                    'title': article.get('title', 'No title'),
+                    'title': title,
                     'link': article.get('link', '#'),
-                    'publisher': article.get('publisher', 'Yahoo Finance'),
+                    'publisher': publisher,
                     'date': article.get('providerPublishTime', None),
-                    'source': 'Yahoo Finance'
+                    'source': 'Yahoo Finance',
+                    'importance': importance
                 })
     except:
         pass
@@ -94,17 +115,28 @@ def get_news(ticker, max_articles=10):
             if hasattr(entry, 'published_parsed'):
                 pub_date = time.mktime(entry.published_parsed)
             
+            title = entry.title
+            importance = 40
+            
+            if 'bloomberg' in publisher.lower():
+                importance += 30
+            elif 'reuters' in publisher.lower():
+                importance += 25
+            elif 'wsj' in publisher.lower() or 'wall street' in publisher.lower():
+                importance += 25
+            
             news_items.append({
-                'title': entry.title,
+                'title': title,
                 'link': entry.link,
                 'publisher': publisher,
                 'date': pub_date,
-                'source': 'Google News'
+                'source': 'Google News',
+                'importance': importance
             })
     except:
         pass
     
-    # Remove duplicates
+    # Remove duplicates by title
     seen_titles = set()
     unique_news = []
     for item in news_items:
@@ -112,8 +144,59 @@ def get_news(ticker, max_articles=10):
             seen_titles.add(item['title'])
             unique_news.append(item)
     
-    unique_news.sort(key=lambda x: x['date'] if x['date'] else 0, reverse=True)
+    unique_news.sort(key=lambda x: (x['importance'], x['date'] if x['date'] else 0), reverse=True)
+    
     return unique_news[:max_articles]
+
+# ============================================================
+# EARNINGS DATE FUNCTION WITH ESTIMATE FALLBACK
+# ============================================================
+
+def get_next_earnings(ticker):
+    """Get next earnings date, with fallback to estimate if not available"""
+    try:
+        stock = yf.Ticker(ticker)
+        info = stock.info
+        earnings_date = info.get('earningsDate', None)
+        
+        if earnings_date:
+            if isinstance(earnings_date, list):
+                return earnings_date[0]
+            return earnings_date
+        else:
+            today = date.today()
+            month = today.month
+            
+            if month <= 1:
+                next_month = 4
+                year = today.year
+            elif month <= 4:
+                next_month = 7
+                year = today.year
+            elif month <= 7:
+                next_month = 10
+                year = today.year
+            elif month <= 10:
+                next_month = 1
+                year = today.year + 1
+            else:
+                next_month = 4
+                year = today.year + 1
+            
+            estimated_date = date(year, next_month, 15)
+            return datetime.combine(estimated_date, datetime.min.time())
+    except:
+        return None
+
+def get_earnings_surprises(ticker):
+    try:
+        stock = yf.Ticker(ticker)
+        earnings = stock.earnings
+        if not earnings.empty:
+            return earnings.tail(4)
+        return None
+    except:
+        return None
 
 # ============================================================
 # SESSION STATE
@@ -150,29 +233,6 @@ def get_dividend_yield(ticker):
         return 0
     except:
         return 0
-
-def get_next_earnings(ticker):
-    try:
-        stock = yf.Ticker(ticker)
-        info = stock.info
-        earnings_date = info.get('earningsDate', None)
-        if earnings_date:
-            if isinstance(earnings_date, list):
-                return earnings_date[0]
-            return earnings_date
-        return None
-    except:
-        return None
-
-def get_earnings_surprises(ticker):
-    try:
-        stock = yf.Ticker(ticker)
-        earnings = stock.earnings
-        if not earnings.empty:
-            return earnings.tail(4)
-        return None
-    except:
-        return None
 
 def get_implied_volatility(ticker, current_price, option_type):
     try:
@@ -425,7 +485,6 @@ if ticker:
         else:
             six_month_return = 0
         
-        # Volatility calculation
         if volatility_source == "Historical Volatility (from price data)":
             if len(hist) > 20:
                 daily_returns = hist['Close'].pct_change().dropna()
@@ -685,14 +744,13 @@ if ticker:
                     st.metric("Vega (per 1%)", f"{vega:.4f}")
                 
                 # ============================================================
-                # PROBABILITY CALCULATOR (FIXED)
+                # PROBABILITY CALCULATOR
                 # ============================================================
                 st.markdown("---")
                 st.subheader("📊 Probability Calculator")
                 
                 col1, col2 = st.columns(2)
                 
-                # LEFT COLUMN: TOUCH PROBABILITY
                 with col1:
                     st.write("**Probability of Touching a Price**")
                     st.caption("The probability that the stock will touch this price at any time before expiration")
@@ -707,43 +765,29 @@ if ticker:
                         if T_years > 0 and sigma > 0:
                             try:
                                 if target_price > current_price:
-                                    # Upside barrier
                                     d1 = (log(current_price / target_price) + mu * T_years) / (sigma * sqrt(T_years))
                                     term1 = norm.cdf(d1)
-                                    
                                     exponent = (2 * mu) / (sigma ** 2)
                                     factor = (target_price / current_price) ** exponent
                                     d2 = (log(current_price / target_price) - mu * T_years) / (sigma * sqrt(T_years))
                                     term2 = factor * norm.cdf(d2)
-                                    
                                     prob_touch = term1 + term2
                                 else:
-                                    # Downside barrier
                                     d1 = (log(current_price / target_price) + mu * T_years) / (sigma * sqrt(T_years))
                                     term1 = norm.cdf(-d1)
-                                    
                                     exponent = (2 * mu) / (sigma ** 2)
                                     factor = (target_price / current_price) ** exponent
                                     d2 = (log(current_price / target_price) - mu * T_years) / (sigma * sqrt(T_years))
                                     term2 = factor * norm.cdf(-d2)
-                                    
                                     prob_touch = term1 + term2
                                 
                                 prob_touch = max(0, min(prob_touch, 1.0))
                                 st.metric(f"Probability to touch ${target_price:,.2f}", f"{prob_touch*100:.1f}%")
-                                
-                                if target_price > current_price:
-                                    st.caption(f"Stock touches ${target_price:,.2f} (upside) at any time")
-                                else:
-                                    st.caption(f"Stock touches ${target_price:,.2f} (downside) at any time")
                             except:
                                 st.error("Calculation error - try a different price")
-                        else:
-                            st.error("Time to expiration or volatility too small")
                     else:
                         st.info("Enter a different target price")
                 
-                # RIGHT COLUMN: CLOSING PROBABILITY
                 with col2:
                     st.write("**Probability of Closing Above/Below**")
                     st.caption("The probability that the stock closes above or below a price at expiration")
@@ -758,31 +802,28 @@ if ticker:
                         horizontal=True
                     )
                     
-                    if close_price != current_price and close_price > 0:
+                    if close_price > 0:
                         T_years = days / 365
                         sigma = volatility / 100
                         
                         if T_years > 0 and sigma > 0:
                             try:
-                                # Calculate d2 for closing probability
-                                d2_close = (log(current_price / close_price) + (risk_free_rate - dividend_yield - sigma**2 / 2) * T_years) / (sigma * sqrt(T_years))
-                                
-                                if close_direction == "Above":
-                                    prob_close = norm.cdf(-d2_close) * 100
-                                    st.metric(f"Probability to close above ${close_price:,.2f}", f"{prob_close:.1f}%")
-                                    st.caption(f"Stock finishes above {close_price:,.2f} at expiration")
+                                if close_price == current_price:
+                                    prob_close = 50.0
+                                    st.metric(f"Probability to close {close_direction} ${close_price:,.2f}", f"{prob_close:.1f}%")
                                 else:
-                                    prob_close = norm.cdf(d2_close) * 100
-                                    st.metric(f"Probability to close below ${close_price:,.2f}", f"{prob_close:.1f}%")
-                                    st.caption(f"Stock finishes below {close_price:,.2f} at expiration")
+                                    d2_close = (log(current_price / close_price) + (risk_free_rate - dividend_yield - sigma**2 / 2) * T_years) / (sigma * sqrt(T_years))
+                                    if close_direction == "Above":
+                                        prob_close = norm.cdf(-d2_close) * 100
+                                    else:
+                                        prob_close = norm.cdf(d2_close) * 100
+                                    prob_close = max(0.01, min(99.99, prob_close))
+                                    st.metric(f"Probability to close {close_direction} ${close_price:,.2f}", f"{prob_close:.1f}%")
                             except:
                                 st.error("Calculation error - try a different price")
-                        else:
-                            st.error("Time to expiration or volatility too small")
                     else:
                         st.info("Enter a different price")
                 
-                # EXPECTED MOVE ROW
                 st.markdown("---")
                 col1, col2 = st.columns(2)
                 with col1:
@@ -790,11 +831,9 @@ if ticker:
                     T_years = days / 365
                     expected_move = current_price * (volatility / 100) * sqrt(T_years)
                     st.metric("1 Standard Deviation Move (±)", format_currency(expected_move))
-                    st.caption(f"Based on {volatility:.0f}% volatility over {days} days")
                 
                 with col2:
                     st.write("**Option Expiration Probability**")
-                    
                     option_direction = st.radio(
                         "Option Type for ITM:",
                         ["Call (Price > Strike)", "Put (Price < Strike)"],
@@ -806,11 +845,9 @@ if ticker:
                     if option_direction == "Call (Price > Strike)":
                         prob_itm = norm.cdf(d2) * 100
                         st.metric(f"Probability Call is ITM (Price > ${strike:,.2f})", f"{prob_itm:.1f}%")
-                        st.caption(f"Stock must close above ${strike:,.2f}")
                     else:
                         prob_itm = norm.cdf(-d2) * 100
                         st.metric(f"Probability Put is ITM (Price < ${strike:,.2f})", f"{prob_itm:.1f}%")
-                        st.caption(f"Stock must close below ${strike:,.2f}")
                 
                 # ============================================================
                 # TRADING SIGNAL
@@ -820,13 +857,13 @@ if ticker:
                 
                 col1, col2 = st.columns(2)
                 with col1:
-                    market_price_input = st.number_input("Enter Actual Option Market Price ($):", value=None, step=0.05, format="%.2f", help="Enter the current market price from your broker")
+                    market_price_input = st.number_input("Enter Actual Option Market Price ($):", value=None, step=0.05, format="%.2f")
                 
                 with col2:
                     if market_price_input is not None and market_price_input > 0 and option_price > 0:
                         price_diff = market_price_input - option_price
                         diff_percent = (price_diff / option_price * 100)
-                        st.metric("Price Difference", format_currency(price_diff), delta=f"{diff_percent:+.1f}%", delta_color="normal")
+                        st.metric("Price Difference", format_currency(price_diff), delta=f"{diff_percent:+.1f}%")
                     else:
                         st.info("Enter market price to see difference")
                 
@@ -835,7 +872,7 @@ if ticker:
                         recommendation = "🔥 STRONG BUY"
                         rec_reason = f"Option is significantly undervalued ({abs(diff_percent):.0f}% below theoretical)"
                         action = "Consider buying - market is underpricing this opportunity"
-                        risk_level = "HIGH" if diff_percent < -30 else "MODERATE"
+                        risk_level = "HIGH"
                     elif diff_percent < -5:
                         recommendation = "✅ BUY"
                         rec_reason = f"Option is undervalued ({abs(diff_percent):.0f}% below theoretical)"
@@ -878,10 +915,6 @@ if ticker:
                             discount = option_price - market_price_input
                             discount_pct = discount / option_price * 100
                             st.write(f"💰 Discount: **{format_currency(discount)}** ({discount_pct:.0f}%)")
-                        elif market_price_input > option_price:
-                            premium = market_price_input - option_price
-                            premium_pct = premium / option_price * 100
-                            st.write(f"💸 Premium: **{format_currency(premium)}** ({premium_pct:.0f}%)")
                     with col2:
                         st.write("**Profit Scenarios**")
                         if market_price_input < option_price:
@@ -894,14 +927,10 @@ if ticker:
                             st.write(f"💰 Risk per contract: **{format_currency(market_price_input * 100)}**")
                         elif "SELL" in recommendation:
                             st.write("❌ **AVOID** buying")
-                            st.write("💡 Consider selling if you own")
                         else:
                             st.write("⏸️ **WAIT** for better price")
                     
-                    # POSITION SIZE CALCULATOR
                     with st.expander("💰 Position Size Calculator"):
-                        st.subheader("Risk Management")
-                        
                         col1, col2 = st.columns(2)
                         with col1:
                             account_size = st.number_input("Account Size ($):", value=10000, step=1000, key="account_size", format="%d")
@@ -910,38 +939,15 @@ if ticker:
                         
                         risk_percent_decimal = risk_percent / 100
                         max_risk = account_size * risk_percent_decimal
-                        
                         st.metric("Max Risk per Trade", format_currency(max_risk))
-                        st.caption(f"Based on {risk_percent:.1f}% of {format_currency(account_size)} account")
-                        
-                        st.markdown("---")
                         
                         if market_price_input and market_price_input > 0:
                             contracts = int(max_risk / (market_price_input * 100))
                             total_risk = contracts * market_price_input * 100
-                            total_position_value = contracts * market_price_input * 100
-                            
-                            col1, col2, col3 = st.columns(3)
-                            with col1:
-                                st.metric("Max Contracts", contracts)
-                            with col2:
-                                st.metric("Total Risk", format_currency(total_risk))
-                            with col3:
-                                st.metric("Position Value", format_currency(total_position_value))
-                            
-                            st.markdown("---")
-                            
                             if contracts > 0:
                                 st.success(f"✅ **Recommended Position:** Buy **{contracts} contract(s)** at {format_currency(market_price_input)} each")
-                                st.caption(f"• Total cost: {format_currency(total_position_value)}")
-                                st.caption(f"• Risk: {format_currency(total_risk)} ({risk_percent:.1f}% of account)")
-                                if contracts > 5:
-                                    st.warning(f"⚠️ {contracts} contracts is a large position - consider reducing size")
                             else:
                                 st.warning(f"⚠️ Account too small for 1 contract")
-                                st.caption(f"Minimum required: {format_currency(market_price_input * 100)}")
-                        else:
-                            st.info("📝 Enter the option market price above to calculate position size")
                 else:
                     st.info("📝 Enter the actual option market price to get a trading recommendation")
         else:
@@ -954,16 +960,17 @@ if ticker:
         st.subheader("📰 Real-Time News")
         
         with st.spinner(f"Fetching latest news for {ticker}..."):
-            news = get_news(ticker, max_articles=10)
+            news = get_news(ticker, max_articles=15)
         
         if news:
-            st.caption(f"Found {len(news)} recent news articles for {ticker}")
+            st.caption(f"Found {len(news)} recent news articles for {ticker} (sorted by importance)")
             
-            for i, article in enumerate(news[:10]):
+            for article in news[:15]:
                 title = article.get('title', 'No title')
                 link = article.get('link', '#')
                 publisher = article.get('publisher', 'Unknown')
                 source = article.get('source', 'Unknown')
+                importance = article.get('importance', 0)
                 pub_date = article.get('date', None)
                 
                 if pub_date:
@@ -974,23 +981,32 @@ if ticker:
                 bg_color = "#f8f9fa" if theme == "Light" else "#2d2d3a"
                 link_color = "#1e1e2e" if theme == "Light" else "#cdd6f4"
                 
+                if importance >= 70:
+                    badge = "🔴 HIGH IMPORTANCE"
+                    badge_color = "#f38ba8"
+                elif importance >= 50:
+                    badge = "🟡 MEDIUM IMPORTANCE"
+                    badge_color = "#f9e2af"
+                else:
+                    badge = "🟢 LOW IMPORTANCE"
+                    badge_color = "#a6e3a1"
+                
                 st.markdown(f"""
-                <div style="background-color: {bg_color}; border-radius: 8px; padding: 12px; margin-bottom: 10px; border-left: 4px solid #89b4fa;">
+                <div style="background-color: {bg_color}; border-radius: 8px; padding: 12px; margin-bottom: 10px; border-left: 4px solid {badge_color};">
                     <p style="margin: 0; font-weight: bold;">
                         <a href="{link}" target="_blank" style="text-decoration: none; color: {link_color};">{title}</a>
                     </p>
                     <p style="margin: 5px 0 0 0; font-size: 12px; color: {'#555' if theme == 'Light' else '#999'};">
                         📰 {publisher} | 🕐 {date_str} | 📍 {source}
                     </p>
+                    <p style="margin: 3px 0 0 0; font-size: 11px; color: {badge_color};">
+                        {badge}
+                    </p>
                 </div>
                 """, unsafe_allow_html=True)
         else:
             st.info(f"No recent news found for {ticker}. Try a different ticker or check back later.")
-            st.caption("💡 Tip: You can also search for news manually on Google Finance or Yahoo Finance")
         
-        # ============================================================
-        # AUTO-REFRESH
-        # ============================================================
         if auto_refresh:
             time.sleep(interval_seconds)
             st.rerun()
@@ -998,20 +1014,8 @@ if ticker:
     except Exception as e:
         if "Too Many Requests" in str(e) or "Rate limited" in str(e):
             st.error("⚠️ **Rate Limit Exceeded**")
-            st.info("""
-            Yahoo Finance has temporarily limited your requests.
-            
-            **What to do:**
-            - Turn OFF auto-refresh in the sidebar
-            - Wait 10-15 minutes
-            - Refresh manually (F5)
-            
-            **To prevent this:**
-            - Keep auto-refresh OFF
-            - Use manual refresh sparingly
-            """)
+            st.info("Turn OFF auto-refresh, wait 10-15 minutes, then refresh manually.")
         else:
             st.error(f"Error fetching data for {ticker}: {e}")
-            st.info("Please check the ticker symbol and try again.")
 else:
     st.info("Enter a stock or index ticker (e.g., AAPL, MSFT, SPY, QQQ, GME) in the sidebar to begin.")
