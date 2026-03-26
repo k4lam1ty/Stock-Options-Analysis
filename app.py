@@ -576,7 +576,7 @@ with st.sidebar:
 tab1, tab2, tab3, tab4, tab5, tab6 = st.tabs(["📊 Analysis", "📈 Watchlist", "💰 Portfolio", "📝 Paper Trading", "⏰ Alerts", "📰 News"])
 
 # ============================================================
-# TAB 1: ANALYSIS (Original dashboard)
+# TAB 1: ANALYSIS (Complete with all financials)
 # ============================================================
 
 with tab1:
@@ -641,7 +641,9 @@ with tab1:
             current_rsi = rsi.iloc[-1] if not rsi.empty else 50
             asset_type = "Index/ETF" if is_index_ticker else "Stock"
             
-            # Header Metrics
+            # ============================================================
+            # HEADER METRICS
+            # ============================================================
             st.subheader(f"📊 {ticker} - {info.get('longName', ticker)} ({asset_type})")
             
             col1, col2, col3, col4, col5, col6 = st.columns(6)
@@ -660,6 +662,9 @@ with tab1:
             
             st.markdown("---")
             
+            # ============================================================
+            # KEY METRICS ROW
+            # ============================================================
             col1, col2, col3, col4, col5 = st.columns(5)
             with col1:
                 pe = info.get('trailingPE', 0)
@@ -678,6 +683,9 @@ with tab1:
             
             st.markdown("---")
             
+            # ============================================================
+            # RATES ROW
+            # ============================================================
             col1, col2, col3 = st.columns(3)
             with col1:
                 st.metric("Risk-Free Rate", f"{risk_free_rate*100:.2f}%")
@@ -688,7 +696,178 @@ with tab1:
             
             st.markdown("---")
             
-            # Options Calculator
+            # ============================================================
+            # EARNINGS CALENDAR
+            # ============================================================
+            if not is_index_ticker:
+                st.subheader("📅 Earnings Calendar")
+                next_earnings = get_next_earnings(ticker)
+                earnings_surprises = get_earnings_surprises(ticker)
+                
+                col1, col2 = st.columns(2)
+                with col1:
+                    if next_earnings:
+                        next_earnings_date = pd.to_datetime(next_earnings).date()
+                        days_until = (next_earnings_date - date.today()).days
+                        st.metric("Next Earnings Date", next_earnings_date.strftime('%Y-%m-%d'))
+                        st.caption(f"{days_until} days from today")
+                        if days_until <= 30:
+                            st.warning("⚠️ Earnings within 30 days - options may have elevated IV")
+                    else:
+                        st.info("Earnings date not available")
+                with col2:
+                    if earnings_surprises is not None and not earnings_surprises.empty:
+                        st.write("**Recent Earnings Surprises:**")
+                        for idx, row in earnings_surprises.iterrows():
+                            surprise_pct = row.get('Earnings Surprise', 0) * 100 if 'Earnings Surprise' in row else 0
+                            color = "🟢" if surprise_pct > 0 else "🔴" if surprise_pct < 0 else "⚪"
+                            st.write(f"{color} {idx.strftime('%Y-%m-%d')}: {surprise_pct:+.1f}%")
+                    else:
+                        st.info("Historical earnings data not available")
+                st.markdown("---")
+            
+            # ============================================================
+            # TRADINGVIEW CHART
+            # ============================================================
+            st.subheader("📉 TradingView Chart")
+            chart_option = st.radio("Choose Chart Mode:", ["Embedded Chart (View Only)", "Launch Full TradingView (Save Drawings)"], horizontal=True)
+            chart_theme = "dark" if theme == "Dark" else "light"
+            
+            if chart_option == "Launch Full TradingView (Save Drawings)":
+                tv_link = tradingview_direct_link(ticker)
+                st.markdown(f"""
+                <div style="text-align: center; padding: 40px; background-color: #1e1e2e; border-radius: 10px; border: 1px solid #89b4fa;">
+                    <h3>📈 Open TradingView for Full Analysis</h3>
+                    <a href="{tv_link}" target="_blank"><button style="background-color: #89b4fa; color: #1e1e2e; padding: 12px 30px; font-size: 16px; border: none; border-radius: 5px; cursor: pointer; font-weight: bold;">🚀 Launch TradingView for {ticker}</button></a>
+                    <p style="font-size: 12px; margin-top: 20px;">Create a free TradingView account to save your drawings</p>
+                </div>
+                """, unsafe_allow_html=True)
+            else:
+                timeframe_options = {"1 Minute": "1", "5 Minutes": "5", "15 Minutes": "15", "30 Minutes": "30", "1 Hour": "60", "4 Hours": "240", "Daily": "D", "Weekly": "W", "Monthly": "M"}
+                selected_timeframe = st.selectbox("Select Timeframe:", list(timeframe_options.keys()))
+                timeframe_value = timeframe_options[selected_timeframe]
+                tradingview_full_chart(ticker, timeframe_value, chart_theme)
+            
+            st.markdown("---")
+            
+            # ============================================================
+            # COMPANY INFORMATION
+            # ============================================================
+            col1, col2 = st.columns(2)
+            with col1:
+                st.subheader("🏢 Asset Information")
+                st.write(f"**Name:** {info.get('longName', 'N/A')}")
+                if not is_index_ticker:
+                    st.write(f"**Sector:** {info.get('sector', 'N/A')}")
+                    st.write(f"**Industry:** {info.get('industry', 'N/A')}")
+                st.write(f"**Country:** {info.get('country', 'N/A')}")
+                st.write(f"**Asset Type:** {asset_type}")
+                st.write(f"**Volume:** {format_volume(info.get('volume', 0))}")
+                st.write(f"**Avg Volume:** {format_volume(info.get('averageVolume', 0))}")
+                st.write(f"**Market Cap:** {format_large_number(info.get('marketCap', 0))}")
+            
+            with col2:
+                st.subheader("📈 Key Metrics")
+                if not is_index_ticker:
+                    st.write(f"**P/E Ratio:** {info.get('trailingPE', 0):,.2f}" if info.get('trailingPE') else "N/A")
+                    st.write(f"**Forward P/E:** {info.get('forwardPE', 0):,.2f}" if info.get('forwardPE') else "N/A")
+                    st.write(f"**PEG Ratio:** {info.get('pegRatio', 0):,.2f}" if info.get('pegRatio') else "N/A")
+                    st.write(f"**Price/Book:** {info.get('priceToBook', 0):,.2f}" if info.get('priceToBook') else "N/A")
+                    st.write(f"**Price/Sales:** {info.get('priceToSalesTrailing12Months', 0):,.2f}" if info.get('priceToSalesTrailing12Months') else "N/A")
+                    st.write(f"**Dividend Yield:** {format_percentage(dividend_yield*100) if dividend_yield > 0 else 'N/A'}")
+                st.write(f"**Beta:** {info.get('beta', 'N/A')}")
+            
+            st.markdown("---")
+            
+            # ============================================================
+            # FINANCIAL STATEMENTS (Key Financials in Millions)
+            # ============================================================
+            if not is_index_ticker and not income_statement.empty:
+                st.subheader("💰 Key Financials (in Millions)")
+                
+                # Income Statement Data
+                if not income_statement.empty:
+                    latest_income = income_statement.iloc[:, 0] if len(income_statement.columns) > 0 else None
+                    if latest_income is not None:
+                        total_revenue = latest_income.get('Total Revenue', info.get('totalRevenue', 0))
+                        gross_profit = latest_income.get('Gross Profit', info.get('grossProfit', 0))
+                        operating_income = latest_income.get('Operating Income', info.get('operatingIncome', 0))
+                        net_income = latest_income.get('Net Income', info.get('netIncomeToCommon', 0))
+                    else:
+                        total_revenue = info.get('totalRevenue', 0)
+                        gross_profit = info.get('grossProfit', 0)
+                        operating_income = info.get('operatingIncome', 0)
+                        net_income = info.get('netIncomeToCommon', 0)
+                else:
+                    total_revenue = info.get('totalRevenue', 0)
+                    gross_profit = info.get('grossProfit', 0)
+                    operating_income = info.get('operatingIncome', 0)
+                    net_income = info.get('netIncomeToCommon', 0)
+                
+                # Balance Sheet Data
+                if not balance_sheet.empty:
+                    latest_balance = balance_sheet.iloc[:, 0] if len(balance_sheet.columns) > 0 else None
+                    if latest_balance is not None:
+                        total_assets = latest_balance.get('Total Assets', info.get('totalAssets', 0))
+                        total_debt = latest_balance.get('Total Debt', info.get('totalDebt', 0))
+                        total_equity = latest_balance.get('Total Equity Gross Minority Interest', info.get('totalShareholderEquity', 0))
+                        current_assets = latest_balance.get('Current Assets', info.get('totalCurrentAssets', 0))
+                        current_liabilities = latest_balance.get('Current Liabilities', info.get('totalCurrentLiabilities', 0))
+                    else:
+                        total_assets = info.get('totalAssets', 0)
+                        total_debt = info.get('totalDebt', 0)
+                        total_equity = info.get('totalShareholderEquity', 0)
+                        current_assets = info.get('totalCurrentAssets', 0)
+                        current_liabilities = info.get('totalCurrentLiabilities', 0)
+                else:
+                    total_assets = info.get('totalAssets', 0)
+                    total_debt = info.get('totalDebt', 0)
+                    total_equity = info.get('totalShareholderEquity', 0)
+                    current_assets = info.get('totalCurrentAssets', 0)
+                    current_liabilities = info.get('totalCurrentLiabilities', 0)
+                
+                # Cash Flow Data
+                if not cashflow.empty:
+                    latest_cashflow = cashflow.iloc[:, 0] if len(cashflow.columns) > 0 else None
+                    if latest_cashflow is not None:
+                        operating_cashflow = latest_cashflow.get('Operating Cash Flow', info.get('operatingCashflow', 0))
+                        free_cashflow = latest_cashflow.get('Free Cash Flow', info.get('freeCashflow', 0))
+                    else:
+                        operating_cashflow = info.get('operatingCashflow', 0)
+                        free_cashflow = info.get('freeCashflow', 0)
+                else:
+                    operating_cashflow = info.get('operatingCashflow', 0)
+                    free_cashflow = info.get('freeCashflow', 0)
+                
+                # Calculate additional metrics
+                working_capital = current_assets - current_liabilities
+                current_ratio = current_assets / current_liabilities if current_liabilities > 0 else 0
+                
+                # Convert to millions for display
+                financials = {
+                    "Total Revenue": total_revenue / 1e6 if total_revenue else 0,
+                    "Gross Profit": gross_profit / 1e6 if gross_profit else 0,
+                    "Operating Income": operating_income / 1e6 if operating_income else 0,
+                    "Net Income": net_income / 1e6 if net_income else 0,
+                    "Operating Cash Flow": operating_cashflow / 1e6 if operating_cashflow else 0,
+                    "Free Cash Flow": free_cashflow / 1e6 if free_cashflow else 0,
+                    "Total Assets": total_assets / 1e6 if total_assets else 0,
+                    "Total Debt": total_debt / 1e6 if total_debt else 0,
+                    "Total Equity": total_equity / 1e6 if total_equity else 0,
+                    "Current Assets": current_assets / 1e6 if current_assets else 0,
+                    "Current Liabilities": current_liabilities / 1e6 if current_liabilities else 0,
+                    "Working Capital": working_capital / 1e6 if working_capital else 0,
+                    "Current Ratio": current_ratio,
+                }
+                
+                df = pd.DataFrame(list(financials.items()), columns=["Metric", "Value ($M)"])
+                df["Value ($M)"] = df["Value ($M)"].apply(lambda x: f"${x:,.2f}M" if x > 0 else "N/A")
+                st.dataframe(df, use_container_width=True, hide_index=True)
+                st.markdown("---")
+            
+            # ============================================================
+            # OPTIONS CALCULATOR
+            # ============================================================
             if days > 0:
                 st.subheader("🎯 Options Price Calculator (Black-Scholes)")
                 
@@ -726,7 +905,115 @@ with tab1:
                 with col5:
                     st.metric("Vega (per 1%)", f"{vega:.4f}")
                 
-                # Profit Targets and Stop Loss
+                # ============================================================
+                # PROBABILITY CALCULATOR
+                # ============================================================
+                st.markdown("---")
+                st.subheader("📊 Probability Calculator")
+                
+                col1, col2 = st.columns(2)
+                
+                with col1:
+                    st.write("**Probability of Touching a Price**")
+                    st.caption("The probability that the stock will touch this price at any time before expiration")
+                    
+                    target_price = st.number_input("Target Price ($):", value=current_price, step=1.0, key="prob_target", format="%.2f")
+                    
+                    if target_price != current_price and target_price > 0:
+                        mu = risk_free_rate - dividend_yield
+                        sigma = volatility / 100
+                        T_years = days / 365
+                        
+                        if T_years > 0 and sigma > 0:
+                            try:
+                                if target_price > current_price:
+                                    d1 = (log(current_price / target_price) + mu * T_years) / (sigma * sqrt(T_years))
+                                    term1 = norm.cdf(d1)
+                                    exponent = (2 * mu) / (sigma ** 2)
+                                    factor = (target_price / current_price) ** exponent
+                                    d2 = (log(current_price / target_price) - mu * T_years) / (sigma * sqrt(T_years))
+                                    term2 = factor * norm.cdf(d2)
+                                    prob_touch = term1 + term2
+                                else:
+                                    d1 = (log(current_price / target_price) + mu * T_years) / (sigma * sqrt(T_years))
+                                    term1 = norm.cdf(-d1)
+                                    exponent = (2 * mu) / (sigma ** 2)
+                                    factor = (target_price / current_price) ** exponent
+                                    d2 = (log(current_price / target_price) - mu * T_years) / (sigma * sqrt(T_years))
+                                    term2 = factor * norm.cdf(-d2)
+                                    prob_touch = term1 + term2
+                                
+                                prob_touch = max(0, min(prob_touch, 1.0))
+                                st.metric(f"Probability to touch ${target_price:,.2f}", f"{prob_touch*100:.1f}%")
+                            except:
+                                st.error("Calculation error - try a different price")
+                    else:
+                        st.info("Enter a different target price")
+                
+                with col2:
+                    st.write("**Probability of Closing Above/Below**")
+                    st.caption("The probability that the stock closes above or below a price at expiration")
+                    
+                    close_price = st.number_input("Price at Expiration ($):", value=current_price, step=1.0, key="close_target", format="%.2f")
+                    
+                    close_direction = st.radio(
+                        "Direction:",
+                        ["Above", "Below"],
+                        index=0,
+                        key="close_direction",
+                        horizontal=True
+                    )
+                    
+                    if close_price > 0:
+                        T_years = days / 365
+                        sigma = volatility / 100
+                        
+                        if T_years > 0 and sigma > 0:
+                            try:
+                                if close_price == current_price:
+                                    prob_close = 50.0
+                                    st.metric(f"Probability to close {close_direction} ${close_price:,.2f}", f"{prob_close:.1f}%")
+                                else:
+                                    d2_close = (log(current_price / close_price) + (risk_free_rate - dividend_yield - sigma**2 / 2) * T_years) / (sigma * sqrt(T_years))
+                                    if close_direction == "Above":
+                                        prob_close = norm.cdf(-d2_close) * 100
+                                    else:
+                                        prob_close = norm.cdf(d2_close) * 100
+                                    prob_close = max(0.01, min(99.99, prob_close))
+                                    st.metric(f"Probability to close {close_direction} ${close_price:,.2f}", f"{prob_close:.1f}%")
+                            except:
+                                st.error("Calculation error - try a different price")
+                    else:
+                        st.info("Enter a different price")
+                
+                st.markdown("---")
+                col1, col2 = st.columns(2)
+                with col1:
+                    st.write("**Expected Move**")
+                    T_years = days / 365
+                    expected_move = current_price * (volatility / 100) * sqrt(T_years)
+                    st.metric("1 Standard Deviation Move (±)", format_currency(expected_move))
+                
+                with col2:
+                    st.write("**Option Expiration Probability**")
+                    option_direction = st.radio(
+                        "Option Type for ITM:",
+                        ["Call (Price > Strike)", "Put (Price < Strike)"],
+                        index=0 if option_type == "Call" else 1,
+                        key="option_itm_direction",
+                        horizontal=True
+                    )
+                    
+                    if option_direction == "Call (Price > Strike)":
+                        prob_itm = norm.cdf(d2) * 100
+                        st.metric(f"Probability Call is ITM (Price > ${strike:,.2f})", f"{prob_itm:.1f}%")
+                    else:
+                        prob_itm = norm.cdf(-d2) * 100
+                        st.metric(f"Probability Put is ITM (Price < ${strike:,.2f})", f"{prob_itm:.1f}%")
+                
+                # ============================================================
+                # TRADE MANAGEMENT (Profit Targets & Stop Loss)
+                # ============================================================
                 st.markdown("---")
                 st.subheader("🎯 Trade Management")
                 
@@ -753,26 +1040,8 @@ with tab1:
                     if st.button("🎮 Add to Paper Trading", key="add_paper"):
                         add_position(ticker, strike, option_type, option_price, quantity, expiration_date.strftime('%Y-%m-%d'), is_paper=True)
                         st.success(f"Added {quantity} contract(s) to Paper Trading")
-            
-            # TradingView Chart
-            st.subheader("📉 TradingView Chart")
-            chart_option = st.radio("Choose Chart Mode:", ["Embedded Chart (View Only)", "Launch Full TradingView (Save Drawings)"], horizontal=True)
-            chart_theme = "dark" if theme == "Dark" else "light"
-            
-            if chart_option == "Launch Full TradingView (Save Drawings)":
-                tv_link = tradingview_direct_link(ticker)
-                st.markdown(f"""
-                <div style="text-align: center; padding: 40px; background-color: #1e1e2e; border-radius: 10px; border: 1px solid #89b4fa;">
-                    <h3>📈 Open TradingView for Full Analysis</h3>
-                    <a href="{tv_link}" target="_blank"><button style="background-color: #89b4fa; color: #1e1e2e; padding: 12px 30px; font-size: 16px; border: none; border-radius: 5px; cursor: pointer; font-weight: bold;">🚀 Launch TradingView for {ticker}</button></a>
-                    <p style="font-size: 12px; margin-top: 20px;">Create a free TradingView account to save your drawings</p>
-                </div>
-                """, unsafe_allow_html=True)
             else:
-                timeframe_options = {"1 Minute": "1", "5 Minutes": "5", "15 Minutes": "15", "30 Minutes": "30", "1 Hour": "60", "4 Hours": "240", "Daily": "D", "Weekly": "W", "Monthly": "M"}
-                selected_timeframe = st.selectbox("Select Timeframe:", list(timeframe_options.keys()))
-                timeframe_value = timeframe_options[selected_timeframe]
-                tradingview_full_chart(ticker, timeframe_value, chart_theme)
+                st.error("Please select a future expiration date")
             
         except Exception as e:
             st.error(f"Error fetching data for {ticker}: {e}")
@@ -863,6 +1132,7 @@ with tab3:
         total_cost = 0
         
         for pos_id, pos in st.session_state.positions.items():
+            # Get current price for the option (simplified)
             current_option_price = 0
             current_value = current_option_price * pos['quantity'] * 100
             cost = pos['entry_price'] * pos['quantity'] * 100
