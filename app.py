@@ -327,7 +327,6 @@ def get_catalyst_news(ticker, max_articles=15):
     except:
         pass
     
-    # Remove duplicates
     seen_titles = set()
     unique_items = []
     for item in catalyst_items:
@@ -641,7 +640,7 @@ def detect_catalysts(ticker, info):
     # 1. Get actual news with links
     catalyst_news = get_catalyst_news(ticker, max_articles=15)
     
-    # 2. Analyst rating changes - add source link
+    # 2. Analyst rating changes
     if info.get('recommendationKey'):
         rec = info.get('recommendationKey', '').lower()
         if rec in ['strong_buy', 'buy']:
@@ -836,29 +835,32 @@ with st.sidebar:
         .stApp { background-color: #ffffff !important; }
         .stApp, .stApp * { color: #000000 !important; }
         
-        div[data-testid="stMetricValue"] {
-            color: #000000 !important;
-            font-weight: bold;
-            font-size: 1.2rem !important;
-        }
-        
-        div[data-testid="stMetricLabel"] {
-            color: #333333 !important;
-            font-size: 0.8rem !important;
-            white-space: normal !important;
-            word-wrap: break-word !important;
-        }
-        
-        div[data-testid="stMetric"] {
-            min-width: 120px !important;
-        }
+        div[data-testid="stMetricValue"] { color: #000000 !important; font-weight: bold; font-size: 1.2rem !important; }
+        div[data-testid="stMetricLabel"] { color: #333333 !important; font-size: 0.8rem !important; white-space: normal !important; word-wrap: break-word !important; }
+        div[data-testid="stMetric"] { min-width: 120px !important; }
         
         .stSidebar { background-color: #f0f2f6 !important; }
         .stSidebar .stMarkdown, .stSidebar p, .stSidebar label { color: #000000 !important; }
         
-        header, .stApp header, [data-testid="stHeader"] {
-            background-color: #ffffff !important;
+        header, .stApp header, [data-testid="stHeader"] { background-color: #ffffff !important; border-bottom: 1px solid #e0e0e0 !important; }
+        
+        header button, .stApp header button, [data-testid="stHeader"] button,
+        [data-testid="baseButton-header"], button[data-testid="baseButton-header"],
+        button[kind="header"] {
+            background-color: transparent !important;
+            color: #333333 !important;
+            border: none !important;
+        }
+        
+        header button:hover, .stApp header button:hover, [data-testid="stHeader"] button:hover {
+            background-color: #f0f0f0 !important;
             color: #000000 !important;
+            border-radius: 4px !important;
+        }
+        
+        header svg, .stApp header svg, [data-testid="stHeader"] svg {
+            fill: #333333 !important;
+            stroke: #333333 !important;
         }
         
         .stTextInput input, .stNumberInput input, .stSelectbox select {
@@ -870,6 +872,7 @@ with st.sidebar:
         .stNumberInput button {
             background-color: #f0f0f0 !important;
             color: #000000 !important;
+            border: 1px solid #cccccc !important;
         }
         
         .stDateInput input {
@@ -877,57 +880,71 @@ with st.sidebar:
             color: #000000 !important;
         }
         
-        .stSelectbox div[data-baseweb="select"] div {
-            color: #000000 !important;
-            background-color: #ffffff !important;
-        }
-        
-        div[role="listbox"] div {
-            color: #000000 !important;
-            background-color: #ffffff !important;
-        }
-        
+        .stSelectbox div[data-baseweb="select"] div { color: #000000 !important; background-color: #ffffff !important; }
+        div[role="listbox"] div { color: #000000 !important; background-color: #ffffff !important; }
         div[role="listbox"] div:hover { background-color: #e0e0e0 !important; }
         
-        .stMetric {
-            background-color: #f8f9fa !important;
-            border: 1px solid #e9ecef !important;
-            border-radius: 10px;
-            padding: 10px;
+        .stMetric { background-color: #f8f9fa !important; border: 1px solid #e9ecef !important; border-radius: 10px; padding: 10px; }
+        
+        .stTabs [data-baseweb="tab-list"] {
+            position: sticky !important;
+            top: 0 !important;
+            background-color: #ffffff !important;
+            z-index: 999 !important;
+            padding-top: 10px !important;
+            padding-bottom: 10px !important;
+            border-bottom: 1px solid #e0e0e0 !important;
         }
         
-        .stTabs [data-baseweb="tab-list"] button {
+        .stTabs [data-baseweb="tab-panel"] { padding-top: 10px !important; }
+        
+        .stTabs [data-baseweb="tab-list"] button { color: #000000 !important; font-size: 0.9rem !important; }
+        .stTabs [data-baseweb="tab-list"] button[aria-selected="true"] { background-color: #e0e0e0 !important; }
+        
+        .stButton button {
+            background-color: #e9ecef !important;
             color: #000000 !important;
-            font-size: 0.9rem !important;
+            border: 1px solid #cccccc !important;
+            border-radius: 4px !important;
+            padding: 0.25rem 0.5rem !important;
+            font-size: 0.8rem !important;
+            cursor: pointer !important;
         }
         
-        .stTabs [data-baseweb="tab-list"] button[aria-selected="true"] {
-            background-color: #e0e0e0 !important;
+        .stButton button:hover { background-color: #dee2e6 !important; border-color: #adb5bd !important; }
+        
+        button[kind="secondary"], .stButton button[data-testid="baseButton-secondary"] {
+            background-color: #f8f9fa !important;
+            color: #dc3545 !important;
+            border: 1px solid #dee2e6 !important;
+            font-weight: bold !important;
+            min-width: 32px !important;
+            width: 32px !important;
+            padding: 0 !important;
+            font-size: 14px !important;
         }
+        
+        button[kind="secondary"]:hover, .stButton button[data-testid="baseButton-secondary"]:hover {
+            background-color: #f5c6cb !important;
+            color: #721c24 !important;
+        }
+        
+        .stExpander { background-color: #f8f9fa !important; border: 1px solid #e9ecef !important; }
+        
+        .stDataFrame, .dataframe, table, th, td { color: #000000 !important; background-color: #ffffff !important; }
+        .stDataFrame th { background-color: #f0f0f0 !important; color: #000000 !important; }
         </style>
         """, unsafe_allow_html=True)
+    
     else:
         st.markdown("""
         <style>
         .stApp { background-color: #1e1e2e !important; }
         .stApp, .stApp * { color: #e0e0e0 !important; }
         
-        div[data-testid="stMetricValue"] {
-            color: #a6e3a1 !important;
-            font-weight: bold;
-            font-size: 1.2rem !important;
-        }
-        
-        div[data-testid="stMetricLabel"] {
-            color: #cdd6f4 !important;
-            font-size: 0.8rem !important;
-            white-space: normal !important;
-            word-wrap: break-word !important;
-        }
-        
-        div[data-testid="stMetric"] {
-            min-width: 120px !important;
-        }
+        div[data-testid="stMetricValue"] { color: #a6e3a1 !important; font-weight: bold; font-size: 1.2rem !important; }
+        div[data-testid="stMetricLabel"] { color: #cdd6f4 !important; font-size: 0.8rem !important; white-space: normal !important; word-wrap: break-word !important; }
+        div[data-testid="stMetric"] { min-width: 120px !important; }
         
         .stSidebar { background-color: #181825 !important; }
         
@@ -937,16 +954,21 @@ with st.sidebar:
             border: 1px solid #45475a !important;
         }
         
-        .stMetric {
-            background-color: #313244 !important;
-            border: 1px solid #45475a !important;
-            border-radius: 10px;
-            padding: 10px;
+        .stMetric { background-color: #313244 !important; border: 1px solid #45475a !important; border-radius: 10px; padding: 10px; }
+        
+        .stTabs [data-baseweb="tab-list"] {
+            position: sticky !important;
+            top: 0 !important;
+            background-color: #1e1e2e !important;
+            z-index: 999 !important;
+            padding-top: 10px !important;
+            padding-bottom: 10px !important;
+            border-bottom: 1px solid #45475a !important;
         }
         
-        .stTabs [data-baseweb="tab-list"] button {
-            font-size: 0.9rem !important;
-        }
+        .stTabs [data-baseweb="tab-panel"] { padding-top: 10px !important; }
+        
+        .stTabs [data-baseweb="tab-list"] button { font-size: 0.9rem !important; }
         </style>
         """, unsafe_allow_html=True)
 
@@ -1042,13 +1064,14 @@ with st.sidebar:
     st.caption(f"📅 Last update: {format_local_time()}")
 
 # ============================================================
-# MAIN APP TABS (4 Tabs - Simplified)
+# MAIN APP TABS (4 Tabs - Sticky)
 # ============================================================
 
 tab1, tab2, tab3, tab4 = st.tabs(["📊 Analysis", "📈 Watchlist", "📰 News", "📉 Historical Data"])
 
 # ============================================================
-# TAB 1: ANALYSIS
+# TAB 1: ANALYSIS (Full content - abbreviated for length)
+# Note: The full analysis tab content from previous versions goes here
 # ============================================================
 
 with tab1:
@@ -1069,7 +1092,6 @@ with tab1:
             price_change = current_price - previous_close
             price_change_pct = (price_change / previous_close * 100) if previous_close else 0
             
-            # Earnings alerts
             next_earnings = get_next_earnings(ticker)
             if next_earnings:
                 days_until = (next_earnings.date() - date.today()).days
@@ -1274,11 +1296,9 @@ with tab1:
                 st.write(f"**Beta:** {info.get('beta', 'N/A')}")
             st.markdown("---")
             
-            # FINANCIAL STATEMENTS
+            # FINANCIAL STATEMENTS (One Big Box - All Visible)
             if not is_index_ticker and not income_statement.empty:
-                st.subheader("💰 Key Financials")
-                
-                # Income Statement Data
+                # Get financial data (same as before)
                 if not income_statement.empty:
                     latest_income = income_statement.iloc[:, 0] if len(income_statement.columns) > 0 else None
                     if latest_income is not None:
@@ -1297,7 +1317,6 @@ with tab1:
                     operating_income = info.get('operatingIncome', 0)
                     net_income = info.get('netIncomeToCommon', 0)
                 
-                # Balance Sheet Data
                 if not balance_sheet.empty:
                     latest_balance = balance_sheet.iloc[:, 0] if len(balance_sheet.columns) > 0 else None
                     if latest_balance is not None:
@@ -1319,7 +1338,6 @@ with tab1:
                     current_assets = info.get('totalCurrentAssets', 0)
                     current_liabilities = info.get('totalCurrentLiabilities', 0)
                 
-                # Cash Flow Data
                 if not cashflow.empty:
                     latest_cashflow = cashflow.iloc[:, 0] if len(cashflow.columns) > 0 else None
                     if latest_cashflow is not None:
@@ -1332,45 +1350,60 @@ with tab1:
                     operating_cashflow = info.get('operatingCashflow', 0)
                     free_cashflow = info.get('freeCashflow', 0)
                 
-                # Calculate additional metrics
+                working_capital = current_assets - current_liabilities
                 current_ratio = current_assets / current_liabilities if current_liabilities > 0 else 0
+                debt_to_equity = total_debt / total_equity if total_equity > 0 else 0
                 
-                # Income Statement Row
-                col1, col2, col3, col4 = st.columns(4)
-                with col1:
-                    st.metric("Total Revenue", format_large_number(total_revenue))
-                with col2:
-                    st.metric("Gross Profit", format_large_number(gross_profit))
-                with col3:
-                    st.metric("Operating Income", format_large_number(operating_income))
-                with col4:
-                    st.metric("Net Income", format_large_number(net_income))
-                
-                st.markdown("---")
-                
-                # Balance Sheet Row
-                col1, col2, col3, col4 = st.columns(4)
-                with col1:
-                    st.metric("Total Assets", format_large_number(total_assets))
-                with col2:
-                    st.metric("Total Debt", format_large_number(total_debt))
-                with col3:
-                    st.metric("Total Equity", format_large_number(total_equity))
-                with col4:
-                    st.metric("Current Ratio", f"{current_ratio:.2f}")
-                
-                st.markdown("---")
-                
-                # Cash Flow Row
-                col1, col2 = st.columns(2)
-                with col1:
-                    st.metric("Operating Cash Flow", format_large_number(operating_cashflow))
-                with col2:
-                    st.metric("Free Cash Flow", format_large_number(free_cashflow))
+                with st.expander("💰 Key Financials", expanded=True):
+                    st.markdown("**Income Statement**")
+                    col1, col2, col3, col4 = st.columns(4)
+                    with col1:
+                        st.metric("Total Revenue", format_large_number(total_revenue))
+                    with col2:
+                        st.metric("Gross Profit", format_large_number(gross_profit))
+                    with col3:
+                        st.metric("Operating Income", format_large_number(operating_income))
+                    with col4:
+                        st.metric("Net Income", format_large_number(net_income))
+                    
+                    st.markdown("---")
+                    
+                    st.markdown("**Balance Sheet**")
+                    col1, col2, col3, col4 = st.columns(4)
+                    with col1:
+                        st.metric("Total Assets", format_large_number(total_assets))
+                    with col2:
+                        st.metric("Total Debt", format_large_number(total_debt))
+                    with col3:
+                        st.metric("Total Equity", format_large_number(total_equity))
+                    with col4:
+                        st.metric("Current Ratio", f"{current_ratio:.2f}")
+                    
+                    st.markdown("---")
+                    
+                    st.markdown("**Cash Flow**")
+                    col1, col2 = st.columns(2)
+                    with col1:
+                        st.metric("Operating Cash Flow", format_large_number(operating_cashflow))
+                    with col2:
+                        st.metric("Free Cash Flow", format_large_number(free_cashflow))
+                    
+                    st.markdown("---")
+                    
+                    st.markdown("**Additional Metrics**")
+                    col1, col2, col3, col4 = st.columns(4)
+                    with col1:
+                        st.write(f"**Current Assets:** {format_large_number(current_assets)}")
+                    with col2:
+                        st.write(f"**Current Liabilities:** {format_large_number(current_liabilities)}")
+                    with col3:
+                        st.write(f"**Working Capital:** {format_large_number(working_capital)}")
+                    with col4:
+                        st.write(f"**Debt/Equity:** {debt_to_equity:.2f}")
                 
                 st.markdown("---")
             
-            # OPTIONS CALCULATOR
+            # OPTIONS CALCULATOR (abbreviated for length - full version from earlier)
             if days > 0:
                 st.subheader("🎯 Options Price Calculator (Black-Scholes)")
                 
@@ -1410,12 +1443,11 @@ with tab1:
                 with col5:
                     st.metric("Vega (per 1%)", f"{vega:.4f}")
                 
-                # PROBABILITY CALCULATOR
+                # PROBABILITY CALCULATOR (abbreviated)
                 st.markdown("---")
                 st.subheader("📊 Probability Calculator")
                 
                 col1, col2 = st.columns(2)
-                
                 with col1:
                     st.write("**Probability of Closing Above/Below**")
                     close_price = st.number_input("Price at Expiration ($):", value=current_price, step=1.0, key="close_target", format="%.2f")
@@ -1651,7 +1683,7 @@ with tab1:
         st.info("Enter a stock or index ticker in the sidebar to begin.")
 
 # ============================================================
-# TAB 2: WATCHLIST (Compact Display)
+# TAB 2: WATCHLIST (Compact)
 # ============================================================
 
 with tab2:
@@ -1689,7 +1721,7 @@ with tab2:
     if st.session_state.watchlist:
         st.caption(f"📊 {len(st.session_state.watchlist)} tickers in watchlist")
         
-        # Compact table header
+        # Header
         col1, col2, col3, col4, col5, col6 = st.columns([1.2, 1.2, 1.8, 1.8, 1.2, 0.6])
         with col1:
             st.markdown("**Ticker**")
@@ -1737,13 +1769,11 @@ with tab2:
             except:
                 invalid_tickers.append(w_ticker)
         
-        # Remove invalid tickers
         for invalid in invalid_tickers:
             if invalid in st.session_state.watchlist:
                 st.session_state.watchlist.remove(invalid)
                 st.warning(f"Removed invalid ticker: {invalid}")
         
-        # Display compact rows
         if watchlist_data:
             for item in watchlist_data:
                 col1, col2, col3, col4, col5, col6 = st.columns([1.2, 1.2, 1.8, 1.8, 1.2, 0.6])
@@ -1767,9 +1797,9 @@ with tab2:
                     if st.button("✖️", key=f"remove_{item['Ticker']}", help=f"Remove {item['Ticker']}"):
                         remove_from_watchlist(item['Ticker'])
                         st.rerun()
-                # No divider - just compact rows
     else:
         st.info("Your watchlist is empty. Add tickers above to track them.")
+
 # ============================================================
 # TAB 3: NEWS
 # ============================================================
@@ -1792,7 +1822,7 @@ with tab3:
     if news:
         st.success(f"Found {len(news)} recent news articles for {news_ticker}")
         
-        for i, article in enumerate(news):
+        for article in news:
             title = article.get('title', 'No title')
             link = article.get('link', '#')
             publisher = article.get('publisher', 'Unknown')
@@ -1862,7 +1892,7 @@ with tab4:
         try:
             hist = get_cached_stock_history(ticker, '2y')
             
-            if not hist.empty:
+            if not hist.empty and 'Close' in hist.columns:
                 st.subheader("Price History (2 Years)")
                 chart_data = pd.DataFrame({
                     'Date': hist.index,
@@ -1870,10 +1900,19 @@ with tab4:
                 })
                 st.line_chart(chart_data.set_index('Date')['Close'], height=400)
                 
-                st.subheader("Volume History")
-                st.bar_chart(chart_data.set_index('Date')['Volume'], height=200)
+                if 'Volume' in hist.columns:
+                    st.subheader("Volume History")
+                    volume_data = pd.DataFrame({
+                        'Date': hist.index,
+                        'Volume': hist['Volume']
+                    })
+                    st.bar_chart(volume_data.set_index('Date')['Volume'], height=200)
+                else:
+                    st.info("Volume data not available")
                 
                 st.markdown("---")
+            else:
+                st.warning("No price history data available")
             
             st.subheader("📊 Earnings History")
             earnings_history = get_earnings_history(ticker)
@@ -1911,7 +1950,7 @@ with tab4:
                 if 'Total Revenue' in income_statement.index:
                     revenue = income_statement.loc['Total Revenue']
                     if not revenue.empty:
-                        st.write("**Revenue Trend**")
+                        st.write("**Revenue Trend (Billions)**")
                         revenue_data = pd.DataFrame({
                             'Date': revenue.index,
                             'Revenue': revenue.values / 1e9
@@ -1921,7 +1960,7 @@ with tab4:
                 if 'Net Income' in income_statement.index:
                     net_income = income_statement.loc['Net Income']
                     if not net_income.empty:
-                        st.write("**Net Income Trend**")
+                        st.write("**Net Income Trend (Billions)**")
                         income_data = pd.DataFrame({
                             'Date': net_income.index,
                             'Net Income': net_income.values / 1e9
