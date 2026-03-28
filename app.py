@@ -12,8 +12,6 @@ from bs4 import BeautifulSoup
 import json
 import os
 import pytz
-import functools
-import random
 
 st.set_page_config(page_title="Stock Analysis Dashboard", layout="wide")
 
@@ -124,26 +122,11 @@ def format_local_date(dt=None):
     return dt.strftime('%A, %B %d, %Y')
 
 # ============================================================
-# SESSION STATE
+# SESSION STATE (Simplified)
 # ============================================================
 
 if 'watchlist' not in st.session_state:
     st.session_state.watchlist = ['AAPL', 'MSFT', 'SPY', 'QQQ']
-
-if 'positions' not in st.session_state:
-    st.session_state.positions = {}
-
-if 'paper_balance' not in st.session_state:
-    st.session_state.paper_balance = 10000.0
-
-if 'paper_positions' not in st.session_state:
-    st.session_state.paper_positions = {}
-
-if 'trade_history' not in st.session_state:
-    st.session_state.trade_history = []
-
-if 'price_alerts' not in st.session_state:
-    st.session_state.price_alerts = {}
 
 # ============================================================
 # FORMATTING FUNCTIONS
@@ -165,12 +148,15 @@ def format_percentage(value):
     return f"{value:,.2f}%"
 
 def format_large_number(value):
+    """Format large numbers with appropriate abbreviations"""
     if value is None or value == 0:
         return "$0"
     if value >= 1_000_000_000:
         return f"${value/1_000_000_000:,.2f}B"
     elif value >= 1_000_000:
         return f"${value/1_000_000:,.2f}M"
+    elif value >= 1_000:
+        return f"${value/1_000:,.2f}K"
     else:
         return f"${value:,.2f}"
 
@@ -190,7 +176,7 @@ def format_volume(value):
 # NEWS FUNCTIONS
 # ============================================================
 
-def get_high_quality_news(ticker, max_articles=15):
+def get_high_quality_news(ticker, max_articles=20):
     """Fetch news from reputable sources only"""
     news_items = []
     
@@ -289,116 +275,156 @@ def get_high_quality_news(ticker, max_articles=15):
     unique_news.sort(key=lambda x: (x['importance'], x['date'] if x['date'] else 0), reverse=True)
     return unique_news[:max_articles]
 
-def get_catalyst_news(ticker, max_articles=10):
-    """Fetch catalyst-focused news (includes Seeking Alpha for catalysts)"""
+def get_catalyst_news(ticker, max_articles=15):
+    """Fetch catalyst-focused news with links"""
     catalyst_items = []
     
-    # Yahoo Finance - catalyst keywords
+    # Yahoo Finance
     try:
         stock = yf.Ticker(ticker)
         yf_news = stock.news
         if yf_news:
-            for article in yf_news[:20]:
-                title = article.get('title', '').lower()
+            for article in yf_news[:max_articles]:
+                title = article.get('title', '')
                 link = article.get('link', '')
                 if link and not link.startswith('http'):
                     link = f"https://finance.yahoo.com{link}"
                 
                 catalyst_keywords = ['earnings', 'acquisition', 'merger', 'ceo', 'lawsuit', 'fda', 'approval', 
                                      'bankruptcy', 'stock split', 'dividend', 'buyback', 'guidance', 
-                                     'forecast', 'upgrade', 'downgrade', 'contract', 'partnership']
+                                     'forecast', 'upgrade', 'downgrade', 'contract', 'partnership',
+                                     'record', 'high', 'low', 'crash', 'rally']
                 
-                if any(keyword in title for keyword in catalyst_keywords):
+                if any(keyword in title.lower() for keyword in catalyst_keywords):
                     catalyst_items.append({
-                        'title': article.get('title', ''),
+                        'title': title,
                         'link': link,
                         'publisher': article.get('publisher', 'Yahoo Finance'),
                         'date': article.get('providerPublishTime', None),
-                        'source': 'Yahoo Finance',
-                        'type': 'catalyst'
+                        'source': 'Yahoo Finance'
                     })
     except:
         pass
     
-    # Google News - catalyst search
+    # Google News with specific search
     try:
-        catalyst_search = f"{ticker} earnings OR acquisition OR merger OR FDA OR approval OR lawsuit"
-        google_url = f"https://news.google.com/rss/search?q={catalyst_search}&hl=en-US&gl=US&ceid=US:en"
+        search_term = f"{ticker} earnings OR acquisition OR merger OR upgrade OR downgrade OR lawsuit"
+        google_url = f"https://news.google.com/rss/search?q={search_term}&hl=en-US&gl=US&ceid=US:en"
         feed = feedparser.parse(google_url)
         
         for entry in feed.entries[:max_articles]:
             title = entry.title
             link = entry.link
             publisher = entry.get('source', {}).get('title', 'Google News') if hasattr(entry, 'source') else 'Google News'
-            pub_date = None
-            if hasattr(entry, 'published_parsed'):
-                pub_date = time.mktime(entry.published_parsed)
             
             catalyst_items.append({
                 'title': title,
                 'link': link,
                 'publisher': publisher,
-                'date': pub_date,
-                'source': 'Google News',
-                'type': 'catalyst'
+                'date': None,
+                'source': 'Google News'
             })
     except:
         pass
     
+    # Remove duplicates
     seen_titles = set()
-    unique_catalysts = []
+    unique_items = []
     for item in catalyst_items:
         clean_title = item['title'].lower().strip()
-        if clean_title not in seen_titles:
+        if clean_title not in seen_titles and len(clean_title) > 10:
             seen_titles.add(clean_title)
-            unique_catalysts.append(item)
+            unique_items.append(item)
     
-    return unique_catalysts[:max_articles]
+    return unique_items[:max_articles]
 
 # ============================================================
 # EARNINGS FUNCTIONS
 # ============================================================
 
 def get_next_earnings(ticker):
+    """Get actual next earnings date from Yahoo Finance"""
     try:
+        stock = yf.Ticker(ticker)
+        calendar = stock.calendar
+        if calendar is not None and not calendar.empty:
+            if 'Earnings Date' in calendar.index:
+                earnings_date = calendar.loc['Earnings Date']
+                if isinstance(earnings_date, pd.Series):
+                    earnings_date = earnings_date.iloc[0]
+                if isinstance(earnings_date, datetime) or isinstance(earnings_date, pd.Timestamp):
+                    return earnings_date
+                if isinstance(earnings_date, list) and len(earnings_date) > 0:
+                    return earnings_date[0]
+        
         info = get_cached_stock_info(ticker)
         earnings_date = info.get('earningsDate', None)
         if earnings_date:
             if isinstance(earnings_date, list):
                 return earnings_date[0]
             return earnings_date
-        else:
-            today = date.today()
-            month = today.month
-            if month <= 1:
-                next_month = 4
-                year = today.year
-            elif month <= 4:
-                next_month = 7
-                year = today.year
-            elif month <= 7:
-                next_month = 10
-                year = today.year
-            elif month <= 10:
-                next_month = 1
-                year = today.year + 1
-            else:
-                next_month = 4
-                year = today.year + 1
-            estimated_date = date(year, next_month, 15)
-            return datetime.combine(estimated_date, datetime.min.time())
+        
+        return None
     except:
         return None
 
-def get_earnings_surprises(ticker):
+def get_earnings_history(ticker):
+    """Get historical earnings dates and surprises from multiple sources"""
+    earnings_data = []
+    
+    # Method 1: Yahoo Finance earnings object
     try:
         stock = yf.Ticker(ticker)
         earnings = stock.earnings
-        if not earnings.empty:
-            return earnings.tail(4)
-        return None
+        
+        if earnings is not None and not earnings.empty:
+            for date, row in earnings.iterrows():
+                if isinstance(row, pd.Series):
+                    eps_actual = row.get('epsActual', row.get('Earnings', None))
+                    eps_estimate = row.get('epsEstimate', row.get('Estimate', None))
+                    
+                    if eps_actual and eps_estimate:
+                        surprise_pct = ((eps_actual - eps_estimate) / abs(eps_estimate)) * 100
+                        earnings_data.append({
+                            'date': date,
+                            'actual': eps_actual,
+                            'estimate': eps_estimate,
+                            'surprise_pct': surprise_pct
+                        })
+                    elif eps_actual:
+                        earnings_data.append({
+                            'date': date,
+                            'actual': eps_actual,
+                            'estimate': None,
+                            'surprise_pct': None
+                        })
     except:
-        return None
+        pass
+    
+    # Method 2: Get from financials if available
+    try:
+        if len(earnings_data) == 0:
+            financials = get_cached_financials(ticker)
+            if financials is not None and not financials.empty and 'Net Income' in financials.index:
+                net_income = financials.loc['Net Income']
+                if not net_income.empty:
+                    for i, (date, value) in enumerate(net_income.items()):
+                        if i < 4:
+                            earnings_data.append({
+                                'date': date,
+                                'actual': value / 1e6 if abs(value) > 1e6 else value,
+                                'estimate': None,
+                                'surprise_pct': None,
+                                'is_net_income': True
+                            })
+    except:
+        pass
+    
+    if earnings_data:
+        earnings_data.sort(key=lambda x: x['date'] if isinstance(x['date'], (datetime, pd.Timestamp)) else datetime.min, reverse=True)
+        return earnings_data[:4]
+    
+    return None
 
 # ============================================================
 # IMPLIED VOLATILITY FUNCTIONS
@@ -546,15 +572,23 @@ def get_risk_free_rate():
         return 0.045
 
 def get_dividend_yield(ticker):
+    """Get dividend yield with sanity check"""
     try:
         info = get_cached_stock_info(ticker)
         dividend_yield = info.get('dividendYield', 0)
-        if dividend_yield:
+        
+        # Sanity check - dividend yield should be between 0% and 15% (0 to 0.15)
+        if dividend_yield and 0 < dividend_yield < 0.15:
             return dividend_yield
+        
+        # If yield is > 0.15 (15%), it's likely an error - try to calculate from dividend rate
         dividend_rate = info.get('dividendRate', 0)
         current_price = info.get('currentPrice', info.get('regularMarketPrice', 0))
-        if dividend_rate and current_price:
-            return dividend_rate / current_price
+        if dividend_rate and current_price and dividend_rate > 0:
+            calculated = dividend_rate / current_price
+            if 0 < calculated < 0.15:
+                return calculated
+        
         return 0
     except:
         return 0
@@ -600,142 +634,165 @@ def calculate_dcf(projections, wacc=0.08, terminal_growth=0.03):
 # ============================================================
 
 def detect_catalysts(ticker, info):
+    """Detect potential bull and bear catalysts with sources and links"""
     bull_catalysts = []
     bear_catalysts = []
     
-    catalyst_news = get_catalyst_news(ticker, max_articles=10)
+    # 1. Get actual news with links
+    catalyst_news = get_catalyst_news(ticker, max_articles=15)
     
-    bull_keywords = ['upgrade', 'buy', 'outperform', 'beat', 'surprise', 'acquisition', 'merger', 
-                     'partnership', 'contract', 'approval', 'launch', 'expansion', 'growth', 
-                     'record', 'high', 'bullish', 'breakout', 'strong', 'exceed', 'catalyst']
-    
-    bear_keywords = ['downgrade', 'sell', 'underperform', 'miss', 'disappoint', 'lawsuit', 
-                     'investigation', 'fraud', 'scandal', 'delay', 'rejection', 'decline', 
-                     'drop', 'fall', 'loss', 'bearish', 'warning', 'weak', 'below', 'concern']
-    
-    # Analyst ratings
+    # 2. Analyst rating changes - add source link
     if info.get('recommendationKey'):
         rec = info.get('recommendationKey', '').lower()
         if rec in ['strong_buy', 'buy']:
-            bull_catalysts.append(f"📊 Analyst consensus: {rec.upper()} rating")
+            bull_catalysts.append({
+                'title': f"Analyst consensus: {rec.upper()} rating",
+                'source': 'Yahoo Finance Analyst Data',
+                'link': f"https://finance.yahoo.com/quote/{ticker}/analysts",
+                'type': 'analyst'
+            })
         elif rec in ['strong_sell', 'sell']:
-            bear_catalysts.append(f"📊 Analyst consensus: {rec.upper()} rating")
+            bear_catalysts.append({
+                'title': f"Analyst consensus: {rec.upper()} rating",
+                'source': 'Yahoo Finance Analyst Data',
+                'link': f"https://finance.yahoo.com/quote/{ticker}/analysts",
+                'type': 'analyst'
+            })
     
-    # Earnings surprises
+    # 3. Target price changes
+    target_mean = info.get('targetMeanPrice', 0)
+    current_price = info.get('currentPrice', info.get('regularMarketPrice', 0))
+    if target_mean and current_price:
+        upside = ((target_mean - current_price) / current_price) * 100
+        if upside > 20:
+            bull_catalysts.append({
+                'title': f"Analyst target price: ${target_mean:.2f} ({upside:+.0f}% upside)",
+                'source': 'Analyst Consensus',
+                'link': f"https://finance.yahoo.com/quote/{ticker}/analysts",
+                'type': 'price_target'
+            })
+        elif upside < -10:
+            bear_catalysts.append({
+                'title': f"Analyst target price: ${target_mean:.2f} ({upside:+.0f}% downside)",
+                'source': 'Analyst Consensus',
+                'link': f"https://finance.yahoo.com/quote/{ticker}/analysts",
+                'type': 'price_target'
+            })
+    
+    # 4. Earnings surprises
     eps_surprise = info.get('earningsQuarterlyGrowth', 0)
     if eps_surprise and eps_surprise > 10:
-        bull_catalysts.append(f"💰 EPS surprise: +{eps_surprise:.1f}%")
+        bull_catalysts.append({
+            'title': f"EPS surprise: +{eps_surprise:.1f}% in last quarter",
+            'source': 'Yahoo Finance Earnings',
+            'link': f"https://finance.yahoo.com/quote/{ticker}/earnings",
+            'type': 'earnings'
+        })
     elif eps_surprise and eps_surprise < -10:
-        bear_catalysts.append(f"💰 EPS surprise: {eps_surprise:.1f}%")
+        bear_catalysts.append({
+            'title': f"EPS surprise: {eps_surprise:.1f}% in last quarter",
+            'source': 'Yahoo Finance Earnings',
+            'link': f"https://finance.yahoo.com/quote/{ticker}/earnings",
+            'type': 'earnings'
+        })
     
-    # News sentiment
-    for article in catalyst_news:
-        title = article['title'].lower()
-        
-        bull_score = sum(2 for kw in bull_keywords if kw in title)
-        bear_score = sum(2 for kw in bear_keywords if kw in title)
-        
-        if bull_score > bear_score and bull_score >= 2:
-            bull_catalysts.append(f"📰 {article['title'][:80]}...")
-        elif bear_score > bull_score and bear_score >= 2:
-            bear_catalysts.append(f"📰 {article['title'][:80]}...")
-    
-    # Earnings date
+    # 5. Earnings date
     next_earnings = get_next_earnings(ticker)
     if next_earnings:
         days_until = (next_earnings.date() - date.today()).days
         if 0 < days_until <= 30:
-            if eps_surprise and eps_surprise > 0:
-                bull_catalysts.append(f"📅 Earnings in {days_until} days (previous beat)")
-            elif eps_surprise and eps_surprise < 0:
-                bear_catalysts.append(f"📅 Earnings in {days_until} days (previous miss)")
-            else:
-                bull_catalysts.append(f"📅 Earnings in {days_until} days")
-    
-    bull_catalysts = list(dict.fromkeys(bull_catalysts))
-    bear_catalysts = list(dict.fromkeys(bear_catalysts))
-    
-    return bull_catalysts[:5], bear_catalysts[:5]
-
-# ============================================================
-# PORTFOLIO MANAGEMENT FUNCTIONS
-# ============================================================
-
-def add_position(ticker, strike, option_type, entry_price, quantity, expiration, is_paper=False):
-    position_id = f"{ticker}_{strike}_{option_type}_{expiration}_{get_local_time().timestamp()}"
-    position = {
-        'id': position_id,
-        'ticker': ticker,
-        'strike': strike,
-        'type': option_type,
-        'entry_price': entry_price,
-        'quantity': quantity,
-        'expiration': expiration,
-        'entry_date': get_local_time().strftime('%Y-%m-%d %H:%M'),
-        'status': 'open',
-        'pnl': 0
-    }
-    if is_paper:
-        st.session_state.paper_positions[position_id] = position
-        total_cost = entry_price * quantity * 100
-        st.session_state.paper_balance -= total_cost
-    else:
-        st.session_state.positions[position_id] = position
-
-def close_position(position_id, exit_price, is_paper=False):
-    if is_paper:
-        position = st.session_state.paper_positions.get(position_id)
-        if position:
-            total_return = (exit_price - position['entry_price']) * position['quantity'] * 100
-            st.session_state.paper_balance += position['entry_price'] * position['quantity'] * 100 + total_return
-            st.session_state.trade_history.append({
-                'date': get_local_time().strftime('%Y-%m-%d %H:%M'),
-                'ticker': position['ticker'],
-                'type': position['type'],
-                'strike': position['strike'],
-                'entry': position['entry_price'],
-                'exit': exit_price,
-                'quantity': position['quantity'],
-                'pnl': total_return,
-                'return_pct': (exit_price - position['entry_price']) / position['entry_price'] * 100
+            bull_catalysts.append({
+                'title': f"Earnings report in {days_until} days",
+                'source': 'Earnings Calendar',
+                'link': f"https://finance.yahoo.com/calendar/earnings?symbol={ticker}",
+                'type': 'earnings_date'
             })
-            del st.session_state.paper_positions[position_id]
-    else:
-        position = st.session_state.positions.get(position_id)
-        if position:
-            del st.session_state.positions[position_id]
+    
+    # 6. News articles with links
+    for article in catalyst_news:
+        title = article['title']
+        link = article.get('link', '#')
+        source = article.get('source', 'News')
+        
+        title_lower = title.lower()
+        bull_keywords = ['upgrade', 'buy', 'outperform', 'beat', 'surprise', 'acquisition', 'merger', 
+                         'partnership', 'contract', 'approval', 'launch', 'record', 'high', 'bullish', 'strong']
+        bear_keywords = ['downgrade', 'sell', 'underperform', 'miss', 'disappoint', 'lawsuit', 
+                         'investigation', 'delay', 'rejection', 'decline', 'drop', 'loss', 'bearish', 'warning']
+        
+        bull_score = sum(2 for kw in bull_keywords if kw in title_lower)
+        bear_score = sum(2 for kw in bear_keywords if kw in title_lower)
+        
+        if bull_score > bear_score and bull_score >= 2:
+            bull_catalysts.append({
+                'title': title[:120] + ('...' if len(title) > 120 else ''),
+                'source': source,
+                'link': link,
+                'type': 'news'
+            })
+        elif bear_score > bull_score and bear_score >= 2:
+            bear_catalysts.append({
+                'title': title[:120] + ('...' if len(title) > 120 else ''),
+                'source': source,
+                'link': link,
+                'type': 'news'
+            })
+    
+    # Remove duplicates by title
+    seen_titles = set()
+    unique_bull = []
+    for item in bull_catalysts:
+        if item['title'] not in seen_titles:
+            seen_titles.add(item['title'])
+            unique_bull.append(item)
+    
+    seen_titles = set()
+    unique_bear = []
+    for item in bear_catalysts:
+        if item['title'] not in seen_titles:
+            seen_titles.add(item['title'])
+            unique_bear.append(item)
+    
+    return unique_bull[:5], unique_bear[:5]
 
 # ============================================================
 # WATCHLIST FUNCTIONS
 # ============================================================
 
+def validate_ticker(ticker):
+    """Check if ticker is valid by trying to get basic info"""
+    try:
+        stock = yf.Ticker(ticker)
+        price = stock.info.get('regularMarketPrice', None)
+        if price and price > 0:
+            return True
+        return False
+    except:
+        return False
+
 def add_to_watchlist(ticker):
-    if ticker not in st.session_state.watchlist:
+    """Add ticker to watchlist only if valid"""
+    if not ticker or ticker == '':
+        return False, "No ticker entered"
+    
+    ticker = ticker.upper()
+    
+    if ticker in st.session_state.watchlist:
+        return False, f"{ticker} already in watchlist"
+    
+    # Validate ticker
+    with st.spinner(f"Validating {ticker}..."):
+        is_valid = validate_ticker(ticker)
+    
+    if is_valid:
         st.session_state.watchlist.append(ticker)
+        return True, f"Added {ticker} to watchlist"
+    else:
+        return False, f"Invalid ticker: {ticker}. Please check the symbol."
 
 def remove_from_watchlist(ticker):
     if ticker in st.session_state.watchlist:
         st.session_state.watchlist.remove(ticker)
-
-def check_price_alerts(ticker, current_price):
-    alerts = st.session_state.price_alerts.get(ticker, [])
-    triggered = []
-    for alert in alerts:
-        if alert['type'] == 'above' and current_price >= alert['price']:
-            triggered.append(alert)
-        elif alert['type'] == 'below' and current_price <= alert['price']:
-            triggered.append(alert)
-    st.session_state.price_alerts[ticker] = [a for a in alerts if a not in triggered]
-    return triggered
-
-def add_price_alert(ticker, price, alert_type):
-    if ticker not in st.session_state.price_alerts:
-        st.session_state.price_alerts[ticker] = []
-    st.session_state.price_alerts[ticker].append({
-        'price': price,
-        'type': alert_type,
-        'created': get_local_time().strftime('%Y-%m-%d %H:%M')
-    })
 
 # ============================================================
 # OPTIONS CALCULATION
@@ -776,57 +833,120 @@ with st.sidebar:
     if theme == "Light":
         st.markdown("""
         <style>
-        .stApp, .stApp * { color: #000000 !important; }
-        div[data-testid="stMetricValue"] { color: #000000 !important; font-weight: bold; }
-        div[data-testid="stMetricLabel"] { color: #333333 !important; }
-        h1, h2, h3, h4, h5, h6 { color: #000000 !important; }
         .stApp { background-color: #ffffff !important; }
-        .stSidebar { background-color: #f0f2f6 !important; }
-        .stTextInput input, .stNumberInput input, .stSelectbox select, .stTextArea textarea {
-            background-color: #ffffff !important; color: #000000 !important; border: 1px solid #cccccc !important;
+        .stApp, .stApp * { color: #000000 !important; }
+        
+        div[data-testid="stMetricValue"] {
+            color: #000000 !important;
+            font-weight: bold;
+            font-size: 1.2rem !important;
         }
-        .stSelectbox div[data-baseweb="select"] div { color: #000000 !important; background-color: #ffffff !important; }
-        div[role="listbox"] div { color: #000000 !important; background-color: #ffffff !important; }
+        
+        div[data-testid="stMetricLabel"] {
+            color: #333333 !important;
+            font-size: 0.8rem !important;
+            white-space: normal !important;
+            word-wrap: break-word !important;
+        }
+        
+        div[data-testid="stMetric"] {
+            min-width: 120px !important;
+        }
+        
+        .stSidebar { background-color: #f0f2f6 !important; }
+        .stSidebar .stMarkdown, .stSidebar p, .stSidebar label { color: #000000 !important; }
+        
+        header, .stApp header, [data-testid="stHeader"] {
+            background-color: #ffffff !important;
+            color: #000000 !important;
+        }
+        
+        .stTextInput input, .stNumberInput input, .stSelectbox select {
+            background-color: #ffffff !important;
+            color: #000000 !important;
+            border: 1px solid #cccccc !important;
+        }
+        
+        .stNumberInput button {
+            background-color: #f0f0f0 !important;
+            color: #000000 !important;
+        }
+        
+        .stDateInput input {
+            background-color: #ffffff !important;
+            color: #000000 !important;
+        }
+        
+        .stSelectbox div[data-baseweb="select"] div {
+            color: #000000 !important;
+            background-color: #ffffff !important;
+        }
+        
+        div[role="listbox"] div {
+            color: #000000 !important;
+            background-color: #ffffff !important;
+        }
+        
         div[role="listbox"] div:hover { background-color: #e0e0e0 !important; }
-        .stMetric { background-color: #f8f9fa !important; border: 1px solid #e9ecef !important; border-radius: 10px; padding: 10px; }
-        .stDataFrame, .dataframe, table, th, td { color: #000000 !important; background-color: #ffffff !important; }
-        .stDataFrame th { background-color: #f0f0f0 !important; color: #000000 !important; }
-        .stButton button { background-color: #e9ecef !important; color: #000000 !important; border: 1px solid #cccccc !important; }
-        .stButton button:hover { background-color: #dee2e6 !important; }
-        .stExpander { background-color: #f8f9fa !important; border: 1px solid #e9ecef !important; }
-        .stExpander summary { color: #000000 !important; }
-        .stRadio label, .stCheckbox label { color: #000000 !important; }
-        .stTabs [data-baseweb="tab-list"] button { color: #000000 !important; }
-        .stTabs [data-baseweb="tab-list"] button[aria-selected="true"] { background-color: #e0e0e0 !important; }
-        .stSelectbox svg { fill: #000000 !important; }
+        
+        .stMetric {
+            background-color: #f8f9fa !important;
+            border: 1px solid #e9ecef !important;
+            border-radius: 10px;
+            padding: 10px;
+        }
+        
+        .stTabs [data-baseweb="tab-list"] button {
+            color: #000000 !important;
+            font-size: 0.9rem !important;
+        }
+        
+        .stTabs [data-baseweb="tab-list"] button[aria-selected="true"] {
+            background-color: #e0e0e0 !important;
+        }
         </style>
         """, unsafe_allow_html=True)
     else:
         st.markdown("""
         <style>
-        .stApp, .stApp * { color: #e0e0e0 !important; }
-        div[data-testid="stMetricValue"] { color: #a6e3a1 !important; font-weight: bold; }
-        div[data-testid="stMetricLabel"] { color: #cdd6f4 !important; }
-        h1, h2, h3, h4, h5, h6 { color: #cdd6f4 !important; }
         .stApp { background-color: #1e1e2e !important; }
-        .stSidebar { background-color: #181825 !important; }
-        .stTextInput input, .stNumberInput input, .stSelectbox select, .stTextArea textarea {
-            background-color: #313244 !important; color: #cdd6f4 !important; border: 1px solid #45475a !important;
+        .stApp, .stApp * { color: #e0e0e0 !important; }
+        
+        div[data-testid="stMetricValue"] {
+            color: #a6e3a1 !important;
+            font-weight: bold;
+            font-size: 1.2rem !important;
         }
-        .stSelectbox div[data-baseweb="select"] div { color: #cdd6f4 !important; background-color: #313244 !important; }
-        div[role="listbox"] div { color: #cdd6f4 !important; background-color: #313244 !important; }
-        div[role="listbox"] div:hover { background-color: #45475a !important; }
-        .stMetric { background-color: #313244 !important; border: 1px solid #45475a !important; border-radius: 10px; padding: 10px; }
-        .stDataFrame, .dataframe, table, th, td { color: #cdd6f4 !important; background-color: #313244 !important; }
-        .stDataFrame th { background-color: #45475a !important; color: #cdd6f4 !important; }
-        .stButton button { background-color: #45475a !important; color: #cdd6f4 !important; border: none !important; }
-        .stButton button:hover { background-color: #585b70 !important; }
-        .stExpander { background-color: #313244 !important; border: 1px solid #45475a !important; }
-        .stExpander summary { color: #cdd6f4 !important; }
-        .stRadio label, .stCheckbox label { color: #cdd6f4 !important; }
-        .stTabs [data-baseweb="tab-list"] button { color: #cdd6f4 !important; }
-        .stTabs [data-baseweb="tab-list"] button[aria-selected="true"] { background-color: #45475a !important; }
-        .stSelectbox svg { fill: #cdd6f4 !important; }
+        
+        div[data-testid="stMetricLabel"] {
+            color: #cdd6f4 !important;
+            font-size: 0.8rem !important;
+            white-space: normal !important;
+            word-wrap: break-word !important;
+        }
+        
+        div[data-testid="stMetric"] {
+            min-width: 120px !important;
+        }
+        
+        .stSidebar { background-color: #181825 !important; }
+        
+        .stTextInput input, .stNumberInput input, .stSelectbox select {
+            background-color: #313244 !important;
+            color: #cdd6f4 !important;
+            border: 1px solid #45475a !important;
+        }
+        
+        .stMetric {
+            background-color: #313244 !important;
+            border: 1px solid #45475a !important;
+            border-radius: 10px;
+            padding: 10px;
+        }
+        
+        .stTabs [data-baseweb="tab-list"] button {
+            font-size: 0.9rem !important;
+        }
         </style>
         """, unsafe_allow_html=True)
 
@@ -922,10 +1042,10 @@ with st.sidebar:
     st.caption(f"📅 Last update: {format_local_time()}")
 
 # ============================================================
-# MAIN APP TABS
+# MAIN APP TABS (4 Tabs - Simplified)
 # ============================================================
 
-tab1, tab2, tab3, tab4, tab5, tab6 = st.tabs(["📊 Analysis", "📈 Watchlist", "💰 Portfolio", "📝 Paper Trading", "⏰ Alerts", "📰 News"])
+tab1, tab2, tab3, tab4 = st.tabs(["📊 Analysis", "📈 Watchlist", "📰 News", "📉 Historical Data"])
 
 # ============================================================
 # TAB 1: ANALYSIS
@@ -948,11 +1068,6 @@ with tab1:
             previous_close = info.get('previousClose', 0)
             price_change = current_price - previous_close
             price_change_pct = (price_change / previous_close * 100) if previous_close else 0
-            
-            # Price alerts
-            triggered_alerts = check_price_alerts(ticker, current_price)
-            for alert in triggered_alerts:
-                st.warning(f"⚠️ **ALERT:** {ticker} is {alert['type']} ${alert['price']:.2f}!")
             
             # Earnings alerts
             next_earnings = get_next_earnings(ticker)
@@ -1049,7 +1164,8 @@ with tab1:
             if not is_index_ticker:
                 st.subheader("📅 Earnings Calendar")
                 next_earnings = get_next_earnings(ticker)
-                earnings_surprises = get_earnings_surprises(ticker)
+                earnings_history = get_earnings_history(ticker)
+                
                 col1, col2 = st.columns(2)
                 with col1:
                     if next_earnings:
@@ -1062,12 +1178,16 @@ with tab1:
                     else:
                         st.info("Earnings date not available")
                 with col2:
-                    if earnings_surprises is not None and not earnings_surprises.empty:
-                        st.write("**Recent Earnings Surprises:**")
-                        for idx, row in earnings_surprises.iterrows():
-                            surprise_pct = row.get('Earnings Surprise', 0) * 100 if 'Earnings Surprise' in row else 0
-                            color = "🟢" if surprise_pct > 0 else "🔴" if surprise_pct < 0 else "⚪"
-                            st.write(f"{color} {idx.strftime('%Y-%m-%d')}: {surprise_pct:+.1f}%")
+                    if earnings_history:
+                        st.write("**Recent Earnings:**")
+                        for earnings in earnings_history[:4]:
+                            date_str = earnings['date'].strftime('%Y-%m-%d') if isinstance(earnings['date'], (datetime, pd.Timestamp)) else str(earnings['date'])
+                            if earnings.get('surprise_pct') is not None:
+                                surprise = earnings['surprise_pct']
+                                color = "🟢" if surprise > 0 else "🔴" if surprise < 0 else "⚪"
+                                st.write(f"{color} {date_str}: {surprise:+.1f}% surprise")
+                            else:
+                                st.write(f"📊 {date_str}")
                     else:
                         st.info("Historical earnings data not available")
                 st.markdown("---")
@@ -1084,17 +1204,29 @@ with tab1:
                 st.markdown("### 🟢 Bull Catalysts")
                 if bull_catalysts:
                     for catalyst in bull_catalysts:
-                        st.markdown(f"✅ {catalyst}")
+                        icon = "📊" if catalyst['type'] == 'analyst' else "💰" if catalyst['type'] == 'earnings' else "🎯" if catalyst['type'] == 'price_target' else "📰"
+                        st.markdown(f"""
+                        <div style="background-color: rgba(46, 139, 86, 0.1); border-left: 3px solid #2e8b57; padding: 8px; margin-bottom: 8px; border-radius: 4px;">
+                            <p style="margin: 0;">{icon} <a href="{catalyst['link']}" target="_blank" style="color: #2e8b57; text-decoration: none;"><strong>{catalyst['title']}</strong></a></p>
+                            <p style="margin: 2px 0 0 0; font-size: 10px; color: #666;">Source: {catalyst['source']}</p>
+                        </div>
+                        """, unsafe_allow_html=True)
                 else:
                     st.info("No significant bull catalysts detected")
             with col2:
                 st.markdown("### 🔴 Bear Catalysts")
                 if bear_catalysts:
                     for catalyst in bear_catalysts:
-                        st.markdown(f"⚠️ {catalyst}")
+                        icon = "📊" if catalyst['type'] == 'analyst' else "💰" if catalyst['type'] == 'earnings' else "🎯" if catalyst['type'] == 'price_target' else "📰"
+                        st.markdown(f"""
+                        <div style="background-color: rgba(220, 20, 60, 0.1); border-left: 3px solid #dc143c; padding: 8px; margin-bottom: 8px; border-radius: 4px;">
+                            <p style="margin: 0;">{icon} <a href="{catalyst['link']}" target="_blank" style="color: #dc143c; text-decoration: none;"><strong>{catalyst['title']}</strong></a></p>
+                            <p style="margin: 2px 0 0 0; font-size: 10px; color: #666;">Source: {catalyst['source']}</p>
+                        </div>
+                        """, unsafe_allow_html=True)
                 else:
                     st.info("No significant bear catalysts detected")
-            st.caption("💡 Catalysts identified from: Analyst ratings, earnings surprises, news sentiment, and upcoming events")
+            st.caption("💡 Click any catalyst link for more details.")
             st.markdown("---")
             
             # TRADINGVIEW CHART
@@ -1144,7 +1276,9 @@ with tab1:
             
             # FINANCIAL STATEMENTS
             if not is_index_ticker and not income_statement.empty:
-                st.subheader("💰 Key Financials (in Millions)")
+                st.subheader("💰 Key Financials")
+                
+                # Income Statement Data
                 if not income_statement.empty:
                     latest_income = income_statement.iloc[:, 0] if len(income_statement.columns) > 0 else None
                     if latest_income is not None:
@@ -1162,6 +1296,8 @@ with tab1:
                     gross_profit = info.get('grossProfit', 0)
                     operating_income = info.get('operatingIncome', 0)
                     net_income = info.get('netIncomeToCommon', 0)
+                
+                # Balance Sheet Data
                 if not balance_sheet.empty:
                     latest_balance = balance_sheet.iloc[:, 0] if len(balance_sheet.columns) > 0 else None
                     if latest_balance is not None:
@@ -1182,6 +1318,8 @@ with tab1:
                     total_equity = info.get('totalShareholderEquity', 0)
                     current_assets = info.get('totalCurrentAssets', 0)
                     current_liabilities = info.get('totalCurrentLiabilities', 0)
+                
+                # Cash Flow Data
                 if not cashflow.empty:
                     latest_cashflow = cashflow.iloc[:, 0] if len(cashflow.columns) > 0 else None
                     if latest_cashflow is not None:
@@ -1193,26 +1331,43 @@ with tab1:
                 else:
                     operating_cashflow = info.get('operatingCashflow', 0)
                     free_cashflow = info.get('freeCashflow', 0)
-                working_capital = current_assets - current_liabilities
+                
+                # Calculate additional metrics
                 current_ratio = current_assets / current_liabilities if current_liabilities > 0 else 0
-                financials = {
-                    "Total Revenue": total_revenue / 1e6 if total_revenue else 0,
-                    "Gross Profit": gross_profit / 1e6 if gross_profit else 0,
-                    "Operating Income": operating_income / 1e6 if operating_income else 0,
-                    "Net Income": net_income / 1e6 if net_income else 0,
-                    "Operating Cash Flow": operating_cashflow / 1e6 if operating_cashflow else 0,
-                    "Free Cash Flow": free_cashflow / 1e6 if free_cashflow else 0,
-                    "Total Assets": total_assets / 1e6 if total_assets else 0,
-                    "Total Debt": total_debt / 1e6 if total_debt else 0,
-                    "Total Equity": total_equity / 1e6 if total_equity else 0,
-                    "Current Assets": current_assets / 1e6 if current_assets else 0,
-                    "Current Liabilities": current_liabilities / 1e6 if current_liabilities else 0,
-                    "Working Capital": working_capital / 1e6 if working_capital else 0,
-                    "Current Ratio": current_ratio,
-                }
-                df = pd.DataFrame(list(financials.items()), columns=["Metric", "Value ($M)"])
-                df["Value ($M)"] = df["Value ($M)"].apply(lambda x: f"${x:,.2f}M" if x > 0 else "N/A")
-                st.dataframe(df, use_container_width=True, hide_index=True)
+                
+                # Income Statement Row
+                col1, col2, col3, col4 = st.columns(4)
+                with col1:
+                    st.metric("Total Revenue", format_large_number(total_revenue))
+                with col2:
+                    st.metric("Gross Profit", format_large_number(gross_profit))
+                with col3:
+                    st.metric("Operating Income", format_large_number(operating_income))
+                with col4:
+                    st.metric("Net Income", format_large_number(net_income))
+                
+                st.markdown("---")
+                
+                # Balance Sheet Row
+                col1, col2, col3, col4 = st.columns(4)
+                with col1:
+                    st.metric("Total Assets", format_large_number(total_assets))
+                with col2:
+                    st.metric("Total Debt", format_large_number(total_debt))
+                with col3:
+                    st.metric("Total Equity", format_large_number(total_equity))
+                with col4:
+                    st.metric("Current Ratio", f"{current_ratio:.2f}")
+                
+                st.markdown("---")
+                
+                # Cash Flow Row
+                col1, col2 = st.columns(2)
+                with col1:
+                    st.metric("Operating Cash Flow", format_large_number(operating_cashflow))
+                with col2:
+                    st.metric("Free Cash Flow", format_large_number(free_cashflow))
+                
                 st.markdown("---")
             
             # OPTIONS CALCULATOR
@@ -1447,30 +1602,45 @@ with tab1:
                         else:
                             st.write("⏸️ **WAIT** for better price")
                     
-                    # Add to Portfolio buttons
-                    col1, col2 = st.columns(2)
-                    with col1:
-                        quantity = st.number_input("Quantity (contracts):", value=1, min_value=1, step=1, key="trade_quantity")
-                        if st.button("📝 Add to Real Portfolio", key="add_real"):
-                            add_position(ticker, strike, option_type, option_price, quantity, expiration_date.strftime('%Y-%m-%d'), is_paper=False)
-                            st.success(f"Added {quantity} contract(s) to Real Portfolio")
-                    with col2:
-                        if st.button("🎮 Add to Paper Trading", key="add_paper"):
-                            add_position(ticker, strike, option_type, option_price, quantity, expiration_date.strftime('%Y-%m-%d'), is_paper=True)
-                            st.success(f"Added {quantity} contract(s) to Paper Trading")
-                    
                     # Position Size Calculator
                     with st.expander("💰 Position Size Calculator"):
                         account_size = st.number_input("Account Size ($):", value=10000, step=1000, key="account_size", format="%d")
                         risk_percent = st.number_input("Risk Per Trade (%):", value=2.0, step=0.5, key="risk_percent")
-                        max_risk = account_size * (risk_percent / 100)
+                        risk_percent_decimal = risk_percent / 100
+                        max_risk = account_size * risk_percent_decimal
+                        
                         st.metric("Max Risk per Trade", format_currency(max_risk))
+                        st.caption(f"Based on {risk_percent:.1f}% of {format_currency(account_size)} account")
+                        
+                        st.markdown("---")
+                        
                         if market_price_input and market_price_input > 0:
-                            contracts = int(max_risk / (market_price_input * 100))
-                            if contracts > 0:
-                                st.success(f"✅ Recommended: Buy **{contracts} contract(s)**")
+                            option_cost = market_price_input * 100
+                            max_contracts = int(max_risk / option_cost) if option_cost > 0 else 0
+                            
+                            col1, col2, col3 = st.columns(3)
+                            with col1:
+                                st.metric("Option Cost per Contract", format_currency(option_cost))
+                            with col2:
+                                st.metric("Max Contracts (by risk)", max_contracts)
+                            with col3:
+                                total_risk = max_contracts * option_cost
+                                st.metric("Total Risk", format_currency(total_risk))
+                            
+                            st.markdown("---")
+                            
+                            if max_contracts > 0:
+                                suggested_contracts = min(max_contracts, 10)
+                                if max_contracts > 10:
+                                    st.info(f"📊 Based on risk management, you could buy up to **{max_contracts} contracts**, but consider starting with **{suggested_contracts} contracts** for better risk control.")
+                                elif max_contracts >= 5:
+                                    st.success(f"✅ Recommended position: **{max_contracts} contract(s)**")
+                                else:
+                                    st.warning(f"⚠️ Account size limits you to **{max_contracts} contract(s)**")
                             else:
-                                st.warning(f"⚠️ Account too small for 1 contract")
+                                st.warning(f"⚠️ Account too small for 1 contract. Minimum required: {format_currency(option_cost)}")
+                        else:
+                            st.info("📝 Enter the option market price above to calculate position size")
                 else:
                     st.info("📝 Enter the actual option market price to get a trading recommendation")
             else:
@@ -1481,179 +1651,130 @@ with tab1:
         st.info("Enter a stock or index ticker in the sidebar to begin.")
 
 # ============================================================
-# TAB 2: WATCHLIST
+# TAB 2: WATCHLIST (Compact Display)
 # ============================================================
 
 with tab2:
     st.header("📈 My Watchlist")
-    col1, col2 = st.columns([3, 1])
+    
+    col1, col2, col3 = st.columns([3, 1, 1])
     with col1:
-        new_watch_ticker = st.text_input("Add new ticker to watchlist:", key="new_watch_ticker")
+        new_watch_ticker = st.text_input(
+            "Add new ticker to watchlist:", 
+            key="new_watch_ticker",
+            placeholder="e.g., AAPL, MSFT, NVDA"
+        )
     with col2:
-        if st.button("➕ Add", key="add_watch"):
-            if new_watch_ticker:
-                add_to_watchlist(new_watch_ticker.upper())
-                st.rerun()
+        add_button = st.button("➕ Add", key="add_watch", use_container_width=True)
+    with col3:
+        clear_button = st.button("🗑️ Clear All", key="clear_watch", use_container_width=True)
+    
+    if add_button:
+        if new_watch_ticker:
+            success, message = add_to_watchlist(new_watch_ticker.strip())
+            if success:
+                st.success(message)
+            else:
+                st.error(message)
+            st.rerun()
+    
+    if clear_button:
+        if st.session_state.watchlist:
+            st.session_state.watchlist = []
+            st.success("Watchlist cleared")
+            st.rerun()
+    
+    st.markdown("---")
     
     if st.session_state.watchlist:
+        st.caption(f"📊 {len(st.session_state.watchlist)} tickers in watchlist")
+        
+        # Compact table header
+        col1, col2, col3, col4, col5, col6 = st.columns([1.2, 1.2, 1.8, 1.8, 1.2, 0.6])
+        with col1:
+            st.markdown("**Ticker**")
+        with col2:
+            st.markdown("**Price**")
+        with col3:
+            st.markdown("**Change**")
+        with col4:
+            st.markdown("**Market Cap**")
+        with col5:
+            st.markdown("**Earnings**")
+        with col6:
+            st.markdown("")
+        
+        st.markdown("---")
+        
+        watchlist_data = []
+        invalid_tickers = []
+        
         for w_ticker in st.session_state.watchlist:
             try:
                 info = get_cached_stock_info(w_ticker)
                 price = info.get('currentPrice', info.get('regularMarketPrice', 0))
-                change = price - info.get('previousClose', price)
-                change_pct = (change / info.get('previousClose', 1) * 100) if info.get('previousClose') else 0
-                earnings = get_next_earnings(w_ticker)
-                days_until = 0
-                if earnings:
-                    days_until = (earnings.date() - date.today()).days
-                
-                col1, col2, col3, col4, col5 = st.columns([2, 2, 2, 2, 1])
-                with col1:
-                    st.write(f"**{w_ticker}**")
-                with col2:
-                    st.write(format_currency(price))
-                with col3:
-                    st.write(f"{change:+.2f} ({change_pct:+.1f}%)")
-                with col4:
-                    if 0 < days_until <= 7:
-                        st.warning(f"⚠️ Earnings in {days_until}d")
-                    else:
-                        st.write("-")
-                with col5:
-                    if st.button("❌ Remove", key=f"remove_{w_ticker}"):
-                        remove_from_watchlist(w_ticker)
-                        st.rerun()
-                st.divider()
+                if price and price > 0:
+                    change = price - info.get('previousClose', price)
+                    change_pct = (change / info.get('previousClose', 1) * 100) if info.get('previousClose') else 0
+                    market_cap = info.get('marketCap', 0)
+                    
+                    next_earnings = get_next_earnings(w_ticker)
+                    days_until = 0
+                    if next_earnings:
+                        days_until = (next_earnings.date() - date.today()).days
+                    
+                    watchlist_data.append({
+                        'Ticker': w_ticker,
+                        'Price': format_currency(price),
+                        'Change': f"{change:+.2f} ({change_pct:+.1f}%)",
+                        'Change_Color': 'green' if change >= 0 else 'red',
+                        'Market Cap': format_large_number(market_cap),
+                        'Earnings': f"{days_until}d" if 0 < days_until <= 7 else "—",
+                        'Earnings_Warning': 0 < days_until <= 7
+                    })
+                else:
+                    invalid_tickers.append(w_ticker)
             except:
-                st.write(f"**{w_ticker}** - Error loading data")
+                invalid_tickers.append(w_ticker)
+        
+        # Remove invalid tickers
+        for invalid in invalid_tickers:
+            if invalid in st.session_state.watchlist:
+                st.session_state.watchlist.remove(invalid)
+                st.warning(f"Removed invalid ticker: {invalid}")
+        
+        # Display compact rows
+        if watchlist_data:
+            for item in watchlist_data:
+                col1, col2, col3, col4, col5, col6 = st.columns([1.2, 1.2, 1.8, 1.8, 1.2, 0.6])
+                with col1:
+                    st.write(f"**{item['Ticker']}**")
+                with col2:
+                    st.write(item['Price'])
+                with col3:
+                    if item['Change_Color'] == 'green':
+                        st.markdown(f"🟢 {item['Change']}")
+                    else:
+                        st.markdown(f"🔴 {item['Change']}")
+                with col4:
+                    st.write(item['Market Cap'])
+                with col5:
+                    if item['Earnings_Warning']:
+                        st.warning(f"⚠️ {item['Earnings']}")
+                    else:
+                        st.write(item['Earnings'])
+                with col6:
+                    if st.button("✖️", key=f"remove_{item['Ticker']}", help=f"Remove {item['Ticker']}"):
+                        remove_from_watchlist(item['Ticker'])
+                        st.rerun()
+                # No divider - just compact rows
     else:
         st.info("Your watchlist is empty. Add tickers above to track them.")
-
 # ============================================================
-# TAB 3: REAL PORTFOLIO
+# TAB 3: NEWS
 # ============================================================
 
 with tab3:
-    st.header("💰 Real Portfolio")
-    if st.session_state.positions:
-        total_cost = 0
-        for pos in st.session_state.positions.values():
-            total_cost += pos['entry_price'] * pos['quantity'] * 100
-        st.metric("Total Cost Basis", format_currency(total_cost))
-        st.markdown("---")
-        for pos_id, pos in st.session_state.positions.items():
-            with st.expander(f"{pos['ticker']} {pos['strike']} {pos['type']} - Entry: ${pos['entry_price']:.2f}"):
-                col1, col2 = st.columns(2)
-                with col1:
-                    st.write(f"**Quantity:** {pos['quantity']} contracts")
-                    st.write(f"**Cost:** {format_currency(pos['entry_price'] * pos['quantity'] * 100)}")
-                    st.write(f"**Entry Date:** {pos['entry_date']}")
-                with col2:
-                    st.write(f"**Expiration:** {pos['expiration']}")
-                    exit_price = st.number_input(f"Exit Price ($):", value=0.0, step=0.05, key=f"exit_{pos_id}")
-                    if st.button(f"Close Position", key=f"close_{pos_id}"):
-                        if exit_price > 0:
-                            close_position(pos_id, exit_price, is_paper=False)
-                            st.success(f"Position closed at ${exit_price:.2f}")
-                            st.rerun()
-    else:
-        st.info("No positions in your real portfolio. Add positions from the Analysis tab.")
-
-# ============================================================
-# TAB 4: PAPER TRADING
-# ============================================================
-
-with tab4:
-    st.header("🎮 Paper Trading Account")
-    col1, col2, col3 = st.columns(3)
-    with col1:
-        st.metric("Account Balance", format_currency(st.session_state.paper_balance))
-    with col2:
-        total_paper_value = 0
-        for pos in st.session_state.paper_positions.values():
-            total_paper_value += pos['entry_price'] * pos['quantity'] * 100
-        st.metric("Positions Value", format_currency(total_paper_value))
-    with col3:
-        st.metric("Total Account Value", format_currency(st.session_state.paper_balance + total_paper_value))
-    st.markdown("---")
-    if st.button("💰 Reset Paper Account ($10,000)"):
-        st.session_state.paper_balance = 10000.0
-        st.session_state.paper_positions = {}
-        st.success("Paper account reset!")
-        st.rerun()
-    st.markdown("---")
-    st.subheader("📊 Paper Trading Positions")
-    if st.session_state.paper_positions:
-        for pos_id, pos in st.session_state.paper_positions.items():
-            with st.expander(f"{pos['ticker']} {pos['strike']} {pos['type']} - Entry: ${pos['entry_price']:.2f}"):
-                col1, col2, col3 = st.columns(3)
-                with col1:
-                    st.write(f"**Quantity:** {pos['quantity']} contracts")
-                    st.write(f"**Cost:** {format_currency(pos['entry_price'] * pos['quantity'] * 100)}")
-                    st.write(f"**Entry Date:** {pos['entry_date']}")
-                with col2:
-                    st.write(f"**Expiration:** {pos['expiration']}")
-                    exit_price = st.number_input(f"Exit Price ($):", value=0.0, step=0.05, key=f"paper_exit_{pos_id}")
-                with col3:
-                    if st.button(f"Close Paper Position", key=f"paper_close_{pos_id}"):
-                        if exit_price > 0:
-                            close_position(pos_id, exit_price, is_paper=True)
-                            st.success(f"Paper position closed at ${exit_price:.2f}")
-                            st.rerun()
-    else:
-        st.info("No paper trading positions. Add positions from the Analysis tab.")
-    st.markdown("---")
-    st.subheader("📜 Trade History")
-    if st.session_state.trade_history:
-        history_df = pd.DataFrame(st.session_state.trade_history)
-        st.dataframe(history_df, use_container_width=True)
-    else:
-        st.info("No completed trades yet.")
-
-# ============================================================
-# TAB 5: ALERTS
-# ============================================================
-
-with tab5:
-    st.header("⏰ Price Alerts")
-    col1, col2 = st.columns(2)
-    with col1:
-        alert_ticker = st.text_input("Ticker for new alert:", key="alert_ticker")
-    with col2:
-        alert_price = st.number_input("Alert Price:", value=100.0, step=1.0, key="new_alert_price")
-    col1, col2 = st.columns(2)
-    with col1:
-        alert_type = st.radio("Alert Type:", ["above", "below"], horizontal=True, key="alert_type_radio")
-    with col2:
-        if st.button("➕ Create Alert", key="create_alert"):
-            if alert_ticker:
-                add_price_alert(alert_ticker.upper(), alert_price, alert_type)
-                st.success(f"Alert created for {alert_ticker.upper()} {alert_type} ${alert_price:.2f}")
-                st.rerun()
-    st.markdown("---")
-    st.subheader("Active Alerts")
-    if st.session_state.price_alerts:
-        for ticker_alerts, alerts in st.session_state.price_alerts.items():
-            for alert in alerts:
-                col1, col2, col3 = st.columns([3, 2, 1])
-                with col1:
-                    st.write(f"**{ticker_alerts}**")
-                with col2:
-                    st.write(f"{alert['type'].upper()} ${alert['price']:.2f}")
-                with col3:
-                    if st.button("❌", key=f"del_alert_{ticker_alerts}_{alert['price']}_{alert['type']}"):
-                        st.session_state.price_alerts[ticker_alerts].remove(alert)
-                        if not st.session_state.price_alerts[ticker_alerts]:
-                            del st.session_state.price_alerts[ticker_alerts]
-                        st.rerun()
-    else:
-        st.info("No active alerts. Create one above.")
-
-# ============================================================
-# TAB 6: NEWS
-# ============================================================
-
-with tab6:
     st.header("📰 Latest Market News")
     news_ticker = st.text_input("Ticker for news:", value=ticker if ticker else "AAPL", key="news_ticker")
     
@@ -1729,6 +1850,115 @@ with tab6:
         **Alternative:** Search manually on Google News:
         [🔍 Search {news_ticker} on Google News](https://news.google.com/search?q={news_ticker}%20stock&hl=en-US&gl=US&ceid=US:en)
         """)
+
+# ============================================================
+# TAB 4: HISTORICAL DATA
+# ============================================================
+
+with tab4:
+    st.header("📉 Historical Data")
+    
+    if ticker:
+        try:
+            hist = get_cached_stock_history(ticker, '2y')
+            
+            if not hist.empty:
+                st.subheader("Price History (2 Years)")
+                chart_data = pd.DataFrame({
+                    'Date': hist.index,
+                    'Close': hist['Close']
+                })
+                st.line_chart(chart_data.set_index('Date')['Close'], height=400)
+                
+                st.subheader("Volume History")
+                st.bar_chart(chart_data.set_index('Date')['Volume'], height=200)
+                
+                st.markdown("---")
+            
+            st.subheader("📊 Earnings History")
+            earnings_history = get_earnings_history(ticker)
+            
+            if earnings_history:
+                earnings_data = []
+                for earnings in earnings_history[:8]:
+                    date_str = earnings['date'].strftime('%Y-%m-%d') if isinstance(earnings['date'], (datetime, pd.Timestamp)) else str(earnings['date'])
+                    
+                    if earnings.get('surprise_pct') is not None:
+                        earnings_data.append({
+                            'Date': date_str,
+                            'Surprise %': f"{earnings['surprise_pct']:+.1f}%"
+                        })
+                    else:
+                        earnings_data.append({
+                            'Date': date_str,
+                            'Surprise %': 'N/A'
+                        })
+                
+                if earnings_data:
+                    df_earnings = pd.DataFrame(earnings_data)
+                    st.dataframe(df_earnings, use_container_width=True, hide_index=True)
+                else:
+                    st.info("Detailed earnings data not available")
+            else:
+                st.info("Historical earnings data not available")
+            
+            st.markdown("---")
+            
+            st.subheader("💰 Financial Trends")
+            
+            income_statement = get_cached_financials(ticker)
+            if income_statement is not None and not income_statement.empty:
+                if 'Total Revenue' in income_statement.index:
+                    revenue = income_statement.loc['Total Revenue']
+                    if not revenue.empty:
+                        st.write("**Revenue Trend**")
+                        revenue_data = pd.DataFrame({
+                            'Date': revenue.index,
+                            'Revenue': revenue.values / 1e9
+                        })
+                        st.bar_chart(revenue_data.set_index('Date')['Revenue'], height=300)
+                
+                if 'Net Income' in income_statement.index:
+                    net_income = income_statement.loc['Net Income']
+                    if not net_income.empty:
+                        st.write("**Net Income Trend**")
+                        income_data = pd.DataFrame({
+                            'Date': net_income.index,
+                            'Net Income': net_income.values / 1e9
+                        })
+                        st.bar_chart(income_data.set_index('Date')['Net Income'], height=300)
+            
+            balance_sheet = get_cached_balance_sheet(ticker)
+            if balance_sheet is not None and not balance_sheet.empty:
+                st.subheader("📋 Balance Sheet Highlights")
+                
+                highlights = []
+                if 'Total Assets' in balance_sheet.index:
+                    assets = balance_sheet.loc['Total Assets'].iloc[0] if not balance_sheet.loc['Total Assets'].empty else 0
+                    highlights.append(("Total Assets", format_large_number(assets)))
+                
+                if 'Total Debt' in balance_sheet.index:
+                    debt = balance_sheet.loc['Total Debt'].iloc[0] if not balance_sheet.loc['Total Debt'].empty else 0
+                    highlights.append(("Total Debt", format_large_number(debt)))
+                
+                if 'Total Equity' in balance_sheet.index:
+                    equity = balance_sheet.loc['Total Equity'].iloc[0] if not balance_sheet.loc['Total Equity'].empty else 0
+                    highlights.append(("Total Equity", format_large_number(equity)))
+                
+                if highlights:
+                    col1, col2 = st.columns(2)
+                    for i, (label, value) in enumerate(highlights):
+                        if i % 2 == 0:
+                            with col1:
+                                st.metric(label, value)
+                        else:
+                            with col2:
+                                st.metric(label, value)
+            
+        except Exception as e:
+            st.error(f"Error loading historical data: {e}")
+    else:
+        st.info("Enter a stock ticker in the sidebar to view historical data")
 
 # ============================================================
 # AUTO-REFRESH
