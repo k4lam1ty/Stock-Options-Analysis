@@ -338,7 +338,7 @@ def get_catalyst_news(ticker, max_articles=15):
     return unique_items[:max_articles]
 
 # ============================================================
-# EARNINGS FUNCTIONS
+# EARNINGS FUNCTIONS (Enhanced)
 # ============================================================
 
 def get_next_earnings(ticker):
@@ -367,11 +367,10 @@ def get_next_earnings(ticker):
     except:
         return None
 
-def get_earnings_history(ticker):
-    """Get historical earnings dates and surprises from multiple sources"""
+def get_earnings_history_with_numbers(ticker):
+    """Get historical earnings dates with actual EPS numbers"""
     earnings_data = []
     
-    # Method 1: Yahoo Finance earnings object
     try:
         stock = yf.Ticker(ticker)
         earnings = stock.earnings
@@ -382,48 +381,46 @@ def get_earnings_history(ticker):
                     eps_actual = row.get('epsActual', row.get('Earnings', None))
                     eps_estimate = row.get('epsEstimate', row.get('Estimate', None))
                     
-                    if eps_actual and eps_estimate:
-                        surprise_pct = ((eps_actual - eps_estimate) / abs(eps_estimate)) * 100
-                        earnings_data.append({
-                            'date': date,
-                            'actual': eps_actual,
-                            'estimate': eps_estimate,
-                            'surprise_pct': surprise_pct
-                        })
-                    elif eps_actual:
-                        earnings_data.append({
-                            'date': date,
-                            'actual': eps_actual,
-                            'estimate': None,
-                            'surprise_pct': None
-                        })
+                    earnings_data.append({
+                        'date': date,
+                        'actual_eps': eps_actual,
+                        'estimated_eps': eps_estimate,
+                        'surprise_pct': ((eps_actual - eps_estimate) / abs(eps_estimate)) * 100 if eps_actual and eps_estimate else None
+                    })
     except:
         pass
     
-    # Method 2: Get from financials if available
+    # Sort by date (newest first)
+    earnings_data.sort(key=lambda x: x['date'], reverse=True)
+    return earnings_data[:8]
+
+def get_future_earnings_dates(ticker):
+    """Get upcoming earnings dates from calendar"""
     try:
-        if len(earnings_data) == 0:
-            financials = get_cached_financials(ticker)
-            if financials is not None and not financials.empty and 'Net Income' in financials.index:
-                net_income = financials.loc['Net Income']
-                if not net_income.empty:
-                    for i, (date, value) in enumerate(net_income.items()):
-                        if i < 4:
-                            earnings_data.append({
-                                'date': date,
-                                'actual': value / 1e6 if abs(value) > 1e6 else value,
-                                'estimate': None,
-                                'surprise_pct': None,
-                                'is_net_income': True
-                            })
+        stock = yf.Ticker(ticker)
+        calendar = stock.calendar
+        if calendar is not None and not calendar.empty:
+            if 'Earnings Date' in calendar.index:
+                earnings_date = calendar.loc['Earnings Date']
+                if isinstance(earnings_date, pd.Series):
+                    earnings_date = earnings_date.iloc[0]
+                if isinstance(earnings_date, list) and len(earnings_date) > 0:
+                    return earnings_date[0]
+                return earnings_date
+        return None
     except:
-        pass
-    
-    if earnings_data:
-        earnings_data.sort(key=lambda x: x['date'] if isinstance(x['date'], (datetime, pd.Timestamp)) else datetime.min, reverse=True)
-        return earnings_data[:4]
-    
-    return None
+        return None
+
+def get_earnings_estimates(ticker):
+    """Get future earnings estimates from Yahoo Finance"""
+    try:
+        stock = yf.Ticker(ticker)
+        earnings_est = stock.earnings_estimate
+        if earnings_est is not None and not earnings_est.empty:
+            return earnings_est
+        return None
+    except:
+        return None
 
 # ============================================================
 # IMPLIED VOLATILITY FUNCTIONS
@@ -576,11 +573,9 @@ def get_dividend_yield(ticker):
         info = get_cached_stock_info(ticker)
         dividend_yield = info.get('dividendYield', 0)
         
-        # Sanity check - dividend yield should be between 0% and 15% (0 to 0.15)
         if dividend_yield and 0 < dividend_yield < 0.15:
             return dividend_yield
         
-        # If yield is > 0.15 (15%), it's likely an error - try to calculate from dividend rate
         dividend_rate = info.get('dividendRate', 0)
         current_price = info.get('currentPrice', info.get('regularMarketPrice', 0))
         if dividend_rate and current_price and dividend_rate > 0:
@@ -637,10 +632,8 @@ def detect_catalysts(ticker, info):
     bull_catalysts = []
     bear_catalysts = []
     
-    # 1. Get actual news with links
     catalyst_news = get_catalyst_news(ticker, max_articles=15)
     
-    # 2. Analyst rating changes
     if info.get('recommendationKey'):
         rec = info.get('recommendationKey', '').lower()
         if rec in ['strong_buy', 'buy']:
@@ -658,7 +651,6 @@ def detect_catalysts(ticker, info):
                 'type': 'analyst'
             })
     
-    # 3. Target price changes
     target_mean = info.get('targetMeanPrice', 0)
     current_price = info.get('currentPrice', info.get('regularMarketPrice', 0))
     if target_mean and current_price:
@@ -678,7 +670,6 @@ def detect_catalysts(ticker, info):
                 'type': 'price_target'
             })
     
-    # 4. Earnings surprises
     eps_surprise = info.get('earningsQuarterlyGrowth', 0)
     if eps_surprise and eps_surprise > 10:
         bull_catalysts.append({
@@ -695,7 +686,6 @@ def detect_catalysts(ticker, info):
             'type': 'earnings'
         })
     
-    # 5. Earnings date
     next_earnings = get_next_earnings(ticker)
     if next_earnings:
         days_until = (next_earnings.date() - date.today()).days
@@ -707,7 +697,6 @@ def detect_catalysts(ticker, info):
                 'type': 'earnings_date'
             })
     
-    # 6. News articles with links
     for article in catalyst_news:
         title = article['title']
         link = article.get('link', '#')
@@ -737,7 +726,6 @@ def detect_catalysts(ticker, info):
                 'type': 'news'
             })
     
-    # Remove duplicates by title
     seen_titles = set()
     unique_bull = []
     for item in bull_catalysts:
@@ -779,7 +767,6 @@ def add_to_watchlist(ticker):
     if ticker in st.session_state.watchlist:
         return False, f"{ticker} already in watchlist"
     
-    # Validate ticker
     with st.spinner(f"Validating {ticker}..."):
         is_valid = validate_ticker(ticker)
     
@@ -886,18 +873,6 @@ with st.sidebar:
         
         .stMetric { background-color: #f8f9fa !important; border: 1px solid #e9ecef !important; border-radius: 10px; padding: 10px; }
         
-        .stTabs [data-baseweb="tab-list"] {
-            position: sticky !important;
-            top: 0 !important;
-            background-color: #ffffff !important;
-            z-index: 999 !important;
-            padding-top: 10px !important;
-            padding-bottom: 10px !important;
-            border-bottom: 1px solid #e0e0e0 !important;
-        }
-        
-        .stTabs [data-baseweb="tab-panel"] { padding-top: 10px !important; }
-        
         .stTabs [data-baseweb="tab-list"] button { color: #000000 !important; font-size: 0.9rem !important; }
         .stTabs [data-baseweb="tab-list"] button[aria-selected="true"] { background-color: #e0e0e0 !important; }
         
@@ -956,21 +931,48 @@ with st.sidebar:
         
         .stMetric { background-color: #313244 !important; border: 1px solid #45475a !important; border-radius: 10px; padding: 10px; }
         
-        .stTabs [data-baseweb="tab-list"] {
-            position: sticky !important;
-            top: 0 !important;
-            background-color: #1e1e2e !important;
-            z-index: 999 !important;
-            padding-top: 10px !important;
-            padding-bottom: 10px !important;
-            border-bottom: 1px solid #45475a !important;
-        }
-        
-        .stTabs [data-baseweb="tab-panel"] { padding-top: 10px !important; }
-        
         .stTabs [data-baseweb="tab-list"] button { font-size: 0.9rem !important; }
         </style>
         """, unsafe_allow_html=True)
+
+# ============================================================
+# STICKY TABS CSS (Works for both themes)
+# ============================================================
+st.markdown("""
+<style>
+/* Make tabs sticky - stays at top while scrolling */
+.stTabs [data-baseweb="tab-list"] {
+    position: sticky !important;
+    top: 0 !important;
+    z-index: 999 !important;
+    padding-top: 10px !important;
+    padding-bottom: 10px !important;
+    background-color: inherit !important;
+}
+
+/* Ensure tab content doesn't get hidden under sticky tabs */
+.stTabs [data-baseweb="tab-panel"] {
+    padding-top: 15px !important;
+}
+
+/* Fix for the main container padding */
+.main .block-container {
+    padding-top: 0rem !important;
+}
+
+/* Ensure the sticky tabs background matches the theme */
+[data-testid="stAppViewContainer"] .stTabs [data-baseweb="tab-list"] {
+    background-color: #ffffff !important;
+}
+
+/* Override for dark mode */
+@media (prefers-color-scheme: dark) {
+    [data-testid="stAppViewContainer"] .stTabs [data-baseweb="tab-list"] {
+        background-color: #1e1e2e !important;
+    }
+}
+</style>
+""", unsafe_allow_html=True)
 
 risk_free_rate = get_risk_free_rate()
 
@@ -1064,14 +1066,13 @@ with st.sidebar:
     st.caption(f"📅 Last update: {format_local_time()}")
 
 # ============================================================
-# MAIN APP TABS (4 Tabs - Sticky)
+# MAIN APP TABS
 # ============================================================
 
 tab1, tab2, tab3, tab4 = st.tabs(["📊 Analysis", "📈 Watchlist", "📰 News", "📉 Historical Data"])
 
 # ============================================================
-# TAB 1: ANALYSIS (Full content - abbreviated for length)
-# Note: The full analysis tab content from previous versions goes here
+# TAB 1: ANALYSIS
 # ============================================================
 
 with tab1:
@@ -1091,12 +1092,6 @@ with tab1:
             previous_close = info.get('previousClose', 0)
             price_change = current_price - previous_close
             price_change_pct = (price_change / previous_close * 100) if previous_close else 0
-            
-            next_earnings = get_next_earnings(ticker)
-            if next_earnings:
-                days_until = (next_earnings.date() - date.today()).days
-                if 0 < days_until <= 7:
-                    st.warning(f"📅 **EARNINGS ALERT:** {ticker} reports earnings in {days_until} days! IV likely elevated.")
             
             hist_6mo = hist.tail(130)
             if len(hist_6mo) > 1:
@@ -1182,40 +1177,98 @@ with tab1:
                 st.metric("Auto-Refresh", "OFF" if not auto_refresh else f"{interval_seconds}s")
             st.markdown("---")
             
-            # EARNINGS CALENDAR
+            # ============================================================
+            # ENHANCED EARNINGS CALENDAR & ESTIMATES
+            # ============================================================
             if not is_index_ticker:
-                st.subheader("📅 Earnings Calendar")
-                next_earnings = get_next_earnings(ticker)
-                earnings_history = get_earnings_history(ticker)
+                st.subheader("📅 Earnings Calendar & Estimates")
                 
-                col1, col2 = st.columns(2)
+                next_earnings = get_future_earnings_dates(ticker)
+                earnings_history = get_earnings_history_with_numbers(ticker)
+                earnings_estimates = get_earnings_estimates(ticker)
+                
+                col1, col2, col3 = st.columns(3)
+                
                 with col1:
+                    st.markdown("**📅 Next Earnings Date**")
                     if next_earnings:
                         next_earnings_date = pd.to_datetime(next_earnings).date()
                         days_until = (next_earnings_date - date.today()).days
-                        st.metric("Next Earnings Date", next_earnings_date.strftime('%Y-%m-%d'))
+                        st.metric("Date", next_earnings_date.strftime('%Y-%m-%d'))
                         st.caption(f"{days_until} days from today")
                         if days_until <= 30:
-                            st.warning("⚠️ Earnings within 30 days - options may have elevated IV")
+                            st.warning("⚠️ Earnings within 30 days - IV likely elevated")
                     else:
-                        st.info("Earnings date not available")
+                        st.info("Date not available")
+                
                 with col2:
+                    st.markdown("**📊 Recent Earnings**")
                     if earnings_history:
-                        st.write("**Recent Earnings:**")
                         for earnings in earnings_history[:4]:
                             date_str = earnings['date'].strftime('%Y-%m-%d') if isinstance(earnings['date'], (datetime, pd.Timestamp)) else str(earnings['date'])
-                            if earnings.get('surprise_pct') is not None:
-                                surprise = earnings['surprise_pct']
+                            actual = earnings.get('actual_eps')
+                            estimated = earnings.get('estimated_eps')
+                            surprise = earnings.get('surprise_pct')
+                            
+                            if actual and estimated:
                                 color = "🟢" if surprise > 0 else "🔴" if surprise < 0 else "⚪"
-                                st.write(f"{color} {date_str}: {surprise:+.1f}% surprise")
+                                st.write(f"{color} **{date_str}**")
+                                st.write(f"   Actual: ${actual:.2f} | Est: ${estimated:.2f}")
+                                if surprise:
+                                    st.write(f"   Surprise: {surprise:+.1f}%")
+                            elif actual:
+                                st.write(f"📊 {date_str}: ${actual:.2f}")
                             else:
                                 st.write(f"📊 {date_str}")
+                            st.markdown("---")
                     else:
-                        st.info("Historical earnings data not available")
+                        st.info("Historical data not available")
+                
+                with col3:
+                    st.markdown("**📈 Future Estimates**")
+                    if earnings_estimates is not None and not earnings_estimates.empty:
+                        if 'eps' in earnings_estimates.columns:
+                            eps_est = earnings_estimates['eps'].iloc[0] if not earnings_estimates['eps'].empty else None
+                            if eps_est:
+                                st.metric("Next Quarter EPS Estimate", f"${eps_est:.2f}")
+                        
+                        if 'revenue' in earnings_estimates.columns:
+                            rev_est = earnings_estimates['revenue'].iloc[0] if not earnings_estimates['revenue'].empty else None
+                            if rev_est:
+                                st.metric("Next Quarter Revenue Estimate", format_large_number(rev_est))
+                    else:
+                        target_mean = info.get('targetMeanPrice', 0)
+                        if target_mean:
+                            st.metric("Analyst Target Price", format_currency(target_mean))
+                        
+                        recommendation = info.get('recommendationKey', '')
+                        if recommendation:
+                            st.metric("Analyst Consensus", recommendation.upper())
+                    
+                    st.caption("💡 Estimates based on analyst forecasts")
+                
                 st.markdown("---")
+                
+                # Earnings Surprise Chart
+                if earnings_history and len([e for e in earnings_history if e.get('surprise_pct') is not None]) >= 4:
+                    st.subheader("📊 Earnings Surprise Trend")
+                    
+                    surprise_data = []
+                    for e in earnings_history[:8]:
+                        if e.get('surprise_pct') is not None:
+                            date_str = e['date'].strftime('%Y-%m-%d') if isinstance(e['date'], (datetime, pd.Timestamp)) else str(e['date'])
+                            surprise_data.append({
+                                'Date': date_str,
+                                'Surprise %': e['surprise_pct']
+                            })
+                    
+                    if surprise_data:
+                        df_surprise = pd.DataFrame(surprise_data)
+                        st.bar_chart(df_surprise.set_index('Date')['Surprise %'], height=300)
+                        st.caption("🟢 Positive = Beat expectations | 🔴 Negative = Miss expectations")
+                        st.markdown("---")
             
             # POTENTIAL CATALYSTS
-            st.markdown("---")
             st.subheader("🚀 Potential Catalysts")
             
             with st.spinner("Analyzing potential catalysts..."):
@@ -1296,9 +1349,10 @@ with tab1:
                 st.write(f"**Beta:** {info.get('beta', 'N/A')}")
             st.markdown("---")
             
-            # FINANCIAL STATEMENTS (One Big Box - All Visible)
+            # FINANCIAL STATEMENTS (Original Box Format)
             if not is_index_ticker and not income_statement.empty:
-                # Get financial data (same as before)
+                st.subheader("💰 Key Financials (in Millions)")
+                
                 if not income_statement.empty:
                     latest_income = income_statement.iloc[:, 0] if len(income_statement.columns) > 0 else None
                     if latest_income is not None:
@@ -1352,58 +1406,29 @@ with tab1:
                 
                 working_capital = current_assets - current_liabilities
                 current_ratio = current_assets / current_liabilities if current_liabilities > 0 else 0
-                debt_to_equity = total_debt / total_equity if total_equity > 0 else 0
                 
-                with st.expander("💰 Key Financials", expanded=True):
-                    st.markdown("**Income Statement**")
-                    col1, col2, col3, col4 = st.columns(4)
-                    with col1:
-                        st.metric("Total Revenue", format_large_number(total_revenue))
-                    with col2:
-                        st.metric("Gross Profit", format_large_number(gross_profit))
-                    with col3:
-                        st.metric("Operating Income", format_large_number(operating_income))
-                    with col4:
-                        st.metric("Net Income", format_large_number(net_income))
-                    
-                    st.markdown("---")
-                    
-                    st.markdown("**Balance Sheet**")
-                    col1, col2, col3, col4 = st.columns(4)
-                    with col1:
-                        st.metric("Total Assets", format_large_number(total_assets))
-                    with col2:
-                        st.metric("Total Debt", format_large_number(total_debt))
-                    with col3:
-                        st.metric("Total Equity", format_large_number(total_equity))
-                    with col4:
-                        st.metric("Current Ratio", f"{current_ratio:.2f}")
-                    
-                    st.markdown("---")
-                    
-                    st.markdown("**Cash Flow**")
-                    col1, col2 = st.columns(2)
-                    with col1:
-                        st.metric("Operating Cash Flow", format_large_number(operating_cashflow))
-                    with col2:
-                        st.metric("Free Cash Flow", format_large_number(free_cashflow))
-                    
-                    st.markdown("---")
-                    
-                    st.markdown("**Additional Metrics**")
-                    col1, col2, col3, col4 = st.columns(4)
-                    with col1:
-                        st.write(f"**Current Assets:** {format_large_number(current_assets)}")
-                    with col2:
-                        st.write(f"**Current Liabilities:** {format_large_number(current_liabilities)}")
-                    with col3:
-                        st.write(f"**Working Capital:** {format_large_number(working_capital)}")
-                    with col4:
-                        st.write(f"**Debt/Equity:** {debt_to_equity:.2f}")
+                financials = {
+                    "Total Revenue": total_revenue / 1e6 if total_revenue else 0,
+                    "Gross Profit": gross_profit / 1e6 if gross_profit else 0,
+                    "Operating Income": operating_income / 1e6 if operating_income else 0,
+                    "Net Income": net_income / 1e6 if net_income else 0,
+                    "Operating Cash Flow": operating_cashflow / 1e6 if operating_cashflow else 0,
+                    "Free Cash Flow": free_cashflow / 1e6 if free_cashflow else 0,
+                    "Total Assets": total_assets / 1e6 if total_assets else 0,
+                    "Total Debt": total_debt / 1e6 if total_debt else 0,
+                    "Total Equity": total_equity / 1e6 if total_equity else 0,
+                    "Current Assets": current_assets / 1e6 if current_assets else 0,
+                    "Current Liabilities": current_liabilities / 1e6 if current_liabilities else 0,
+                    "Working Capital": working_capital / 1e6 if working_capital else 0,
+                    "Current Ratio": current_ratio,
+                }
                 
+                df = pd.DataFrame(list(financials.items()), columns=["Metric", "Value ($M)"])
+                df["Value ($M)"] = df["Value ($M)"].apply(lambda x: f"${x:,.2f}M" if x > 0 else "N/A")
+                st.dataframe(df, use_container_width=True, hide_index=True)
                 st.markdown("---")
             
-            # OPTIONS CALCULATOR (abbreviated for length - full version from earlier)
+            # OPTIONS CALCULATOR
             if days > 0:
                 st.subheader("🎯 Options Price Calculator (Black-Scholes)")
                 
@@ -1443,11 +1468,12 @@ with tab1:
                 with col5:
                     st.metric("Vega (per 1%)", f"{vega:.4f}")
                 
-                # PROBABILITY CALCULATOR (abbreviated)
+                # PROBABILITY CALCULATOR
                 st.markdown("---")
                 st.subheader("📊 Probability Calculator")
                 
                 col1, col2 = st.columns(2)
+                
                 with col1:
                     st.write("**Probability of Closing Above/Below**")
                     close_price = st.number_input("Price at Expiration ($):", value=current_price, step=1.0, key="close_target", format="%.2f")
@@ -1721,7 +1747,6 @@ with tab2:
     if st.session_state.watchlist:
         st.caption(f"📊 {len(st.session_state.watchlist)} tickers in watchlist")
         
-        # Header
         col1, col2, col3, col4, col5, col6 = st.columns([1.2, 1.2, 1.8, 1.8, 1.2, 0.6])
         with col1:
             st.markdown("**Ticker**")
@@ -1915,21 +1940,35 @@ with tab4:
                 st.warning("No price history data available")
             
             st.subheader("📊 Earnings History")
-            earnings_history = get_earnings_history(ticker)
+            earnings_history = get_earnings_history_with_numbers(ticker)
             
             if earnings_history:
                 earnings_data = []
                 for earnings in earnings_history[:8]:
                     date_str = earnings['date'].strftime('%Y-%m-%d') if isinstance(earnings['date'], (datetime, pd.Timestamp)) else str(earnings['date'])
+                    actual = earnings.get('actual_eps')
+                    estimated = earnings.get('estimated_eps')
+                    surprise = earnings.get('surprise_pct')
                     
-                    if earnings.get('surprise_pct') is not None:
+                    if actual and estimated:
                         earnings_data.append({
                             'Date': date_str,
-                            'Surprise %': f"{earnings['surprise_pct']:+.1f}%"
+                            'Actual EPS': f"${actual:.2f}",
+                            'Estimate EPS': f"${estimated:.2f}",
+                            'Surprise %': f"{surprise:+.1f}%"
+                        })
+                    elif actual:
+                        earnings_data.append({
+                            'Date': date_str,
+                            'Actual EPS': f"${actual:.2f}",
+                            'Estimate EPS': 'N/A',
+                            'Surprise %': 'N/A'
                         })
                     else:
                         earnings_data.append({
                             'Date': date_str,
+                            'Actual EPS': 'N/A',
+                            'Estimate EPS': 'N/A',
                             'Surprise %': 'N/A'
                         })
                 
