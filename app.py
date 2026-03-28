@@ -454,10 +454,15 @@ def calculate_option_price(S, K, T, r, v, q, option_type):
 with st.sidebar:
     st.header("🎨 Appearance")
     theme = st.selectbox("Theme:", ["Dark", "Light"], index=0)
+    
     if theme == "Light":
         st.markdown("""
         <style>
-        .stApp { background-color: #ffffff; }
+        /* Light Mode - Dark Text on Light Background */
+        .stApp {
+            background-color: #ffffff;
+        }
+        /* All text - black */
         .stMarkdown, .stMarkdown p, .stMarkdown h1, .stMarkdown h2, .stMarkdown h3, .stMarkdown h4,
         .stText, .stTextInput, .stTextArea, .stNumberInput, .stSelectbox,
         .stMetric, .stMetric label, .stMetric p,
@@ -465,17 +470,24 @@ with st.sidebar:
         .stExpander, .stExpander summary,
         .stButton button, .stButton button p,
         .stRadio label, .stCheckbox label,
-        .stCaption, .stCaption p {
+        .stCaption, .stCaption p,
+        .stInfo, .stWarning, .stError, .stSuccess {
             color: #000000 !important;
         }
+        /* Sidebar */
         .stSidebar, .stSidebar .stMarkdown {
             background-color: #f5f5f5;
         }
-        input, .stTextInput input, .stNumberInput input, .stSelectbox select {
+        .stSidebar .stMarkdown, .stSidebar p, .stSidebar label, .stSidebar h1, .stSidebar h2, .stSidebar h3 {
+            color: #000000 !important;
+        }
+        /* Input fields */
+        input, .stTextInput input, .stNumberInput input, .stSelectbox select, .stTextArea textarea {
             background-color: #ffffff !important;
             color: #000000 !important;
             border: 1px solid #cccccc !important;
         }
+        /* Metrics */
         .stMetric {
             background-color: #f8f9fa;
             border-radius: 10px;
@@ -489,18 +501,87 @@ with st.sidebar:
         div[data-testid="stMetricLabel"] {
             color: #555555 !important;
         }
+        /* Headers */
         h1, h2, h3, h4, h5, h6 {
             color: #000000 !important;
+        }
+        /* DataFrames */
+        .stDataFrame, .dataframe, table, th, td {
+            color: #000000 !important;
+            background-color: #ffffff !important;
+        }
+        /* Buttons */
+        .stButton button {
+            background-color: #e9ecef !important;
+            color: #000000 !important;
+            border: 1px solid #cccccc !important;
         }
         </style>
         """, unsafe_allow_html=True)
     else:
         st.markdown("""
         <style>
-        .stApp { background-color: #1e1e2e; }
-        .stMarkdown { color: #cdd6f4; }
-        .stMetric { background-color: #313244; }
-        div[data-testid="stMetricValue"] { color: #a6e3a1; }
+        /* Dark Mode - Light Text on Dark Background */
+        .stApp {
+            background-color: #1e1e2e;
+        }
+        /* All text - light */
+        .stMarkdown, .stMarkdown p, .stMarkdown h1, .stMarkdown h2, .stMarkdown h3, .stMarkdown h4,
+        .stText, .stTextInput, .stTextArea, .stNumberInput, .stSelectbox,
+        .stMetric, .stMetric label, .stMetric p,
+        .stDataFrame, .stDataFrame div,
+        .stExpander, .stExpander summary,
+        .stButton button, .stButton button p,
+        .stRadio label, .stCheckbox label,
+        .stCaption, .stCaption p,
+        .stInfo, .stWarning, .stError, .stSuccess {
+            color: #cdd6f4 !important;
+        }
+        /* Sidebar */
+        .stSidebar, .stSidebar .stMarkdown {
+            background-color: #181825;
+        }
+        .stSidebar .stMarkdown, .stSidebar p, .stSidebar label, .stSidebar h1, .stSidebar h2, .stSidebar h3 {
+            color: #cdd6f4 !important;
+        }
+        /* Input fields */
+        input, .stTextInput input, .stNumberInput input, .stSelectbox select, .stTextArea textarea {
+            background-color: #313244 !important;
+            color: #cdd6f4 !important;
+            border: 1px solid #45475a !important;
+        }
+        /* Metrics */
+        .stMetric {
+            background-color: #313244;
+            border-radius: 10px;
+            padding: 10px;
+            border: 1px solid #45475a;
+        }
+        div[data-testid="stMetricValue"] {
+            color: #a6e3a1 !important;
+            font-weight: bold;
+        }
+        div[data-testid="stMetricLabel"] {
+            color: #cdd6f4 !important;
+        }
+        /* Headers */
+        h1, h2, h3, h4, h5, h6 {
+            color: #cdd6f4 !important;
+        }
+        /* DataFrames */
+        .stDataFrame, .dataframe, table, th, td {
+            color: #cdd6f4 !important;
+            background-color: #313244 !important;
+        }
+        /* Buttons */
+        .stButton button {
+            background-color: #45475a !important;
+            color: #cdd6f4 !important;
+            border: none !important;
+        }
+        .stButton button:hover {
+            background-color: #585b70 !important;
+        }
         </style>
         """, unsafe_allow_html=True)
 
@@ -872,66 +953,15 @@ with tab1:
                     st.metric("Vega (per 1%)", f"{vega:.4f}")
                 
                 # ============================================================
-                # PROBABILITY CALCULATOR (BULLETPROOF)
+                # PROBABILITY CALCULATOR (WITH SAFE BOUNDS)
                 # ============================================================
                 st.markdown("---")
                 st.subheader("📊 Probability Calculator")
                 
                 col1, col2 = st.columns(2)
                 
-                # LEFT COLUMN: TOUCH PROBABILITY
+                # LEFT COLUMN: CLOSING PROBABILITY
                 with col1:
-                    st.write("**Probability of Stock Touching a Price**")
-                    st.caption("The probability that the stock will touch this price at any time before expiration")
-                    
-                    target_price = st.number_input("Target Price ($):", value=current_price, step=1.0, key="prob_target", format="%.2f")
-                    
-                    if target_price != current_price and target_price > 0 and days > 0:
-                        sigma = vol_used
-                        T_years = days / 365
-                        mu = risk_free_rate - dividend_yield
-                        drift = mu - 0.5 * sigma**2
-                        
-                        try:
-                            if target_price > current_price:
-                                # Upside barrier
-                                d1 = (log(current_price / target_price) + mu * T_years) / (sigma * sqrt(T_years))
-                                term1 = norm.cdf(d1)
-                                
-                                exponent = (2 * mu) / (sigma ** 2)
-                                factor = (target_price / current_price) ** exponent
-                                d2 = (log(current_price / target_price) - mu * T_years) / (sigma * sqrt(T_years))
-                                term2 = factor * norm.cdf(d2)
-                                
-                                prob_touch = term1 + term2
-                            else:
-                                # Downside barrier
-                                d1 = (log(current_price / target_price) + mu * T_years) / (sigma * sqrt(T_years))
-                                term1 = norm.cdf(-d1)
-                                
-                                exponent = (2 * mu) / (sigma ** 2)
-                                factor = (target_price / current_price) ** exponent
-                                d2 = (log(current_price / target_price) - mu * T_years) / (sigma * sqrt(T_years))
-                                term2 = factor * norm.cdf(-d2)
-                                
-                                prob_touch = term1 + term2
-                            
-                            # Ensure probability is between 0 and 1
-                            prob_touch = max(0.0, min(1.0, prob_touch))
-                            
-                            st.metric(f"Probability to touch ${target_price:,.2f}", f"{prob_touch*100:.1f}%")
-                            
-                            if target_price > current_price:
-                                st.caption(f"Upside barrier - stock touches ${target_price:,.2f} at any time")
-                            else:
-                                st.caption(f"Downside barrier - stock touches ${target_price:,.2f} at any time")
-                        except:
-                            st.error("Calculation error - try a different price")
-                    else:
-                        st.info("Enter a different target price")
-                
-                # RIGHT COLUMN: CLOSING PROBABILITY
-                with col2:
                     st.write("**Probability of Closing Above/Below**")
                     st.caption("The probability that the stock closes above or below a price at expiration")
                     
@@ -945,42 +975,44 @@ with tab1:
                         horizontal=True
                     )
                     
-                    if close_price > 0 and days > 0:
+                    if close_price > 0 and days > 0 and vol_used > 0:
                         sigma = vol_used
                         T_years = days / 365
                         
                         try:
-                            # Calculate d2 for closing probability
-                            d2 = (log(current_price / close_price) + (risk_free_rate - dividend_yield - 0.5 * sigma**2) * T_years) / (sigma * sqrt(T_years))
-                            
-                            if close_direction == "Above":
-                                prob_close = norm.cdf(-d2)
-                                st.metric(f"Probability to close above ${close_price:,.2f}", f"{prob_close*100:.1f}%")
-                                st.caption(f"Stock finishes above ${close_price:,.2f} at expiration")
+                            # Ensure we don't divide by zero
+                            if sigma * sqrt(T_years) == 0:
+                                prob_close = 0.5
                             else:
-                                prob_close = norm.cdf(d2)
-                                st.metric(f"Probability to close below ${close_price:,.2f}", f"{prob_close*100:.1f}%")
-                                st.caption(f"Stock finishes below ${close_price:,.2f} at expiration")
-                        except:
+                                d2 = (log(current_price / close_price) + (risk_free_rate - dividend_yield - 0.5 * sigma**2) * T_years) / (sigma * sqrt(T_years))
+                                
+                                if close_direction == "Above":
+                                    prob_close = norm.cdf(-d2)
+                                else:
+                                    prob_close = norm.cdf(d2)
+                            
+                            # Cap at realistic values (never 0% or 100%)
+                            prob_close = max(0.0001, min(0.9999, prob_close))
+                            st.metric(f"Probability to close {close_direction} ${close_price:,.2f}", f"{prob_close*100:.1f}%")
+                            st.caption(f"Stock finishes {close_direction} ${close_price:,.2f} at expiration")
+                        except Exception as e:
                             st.error("Calculation error - try a different price")
                     else:
                         st.info("Enter a valid price")
                 
-                # EXPECTED MOVE AND ITM PROBABILITY
-                st.markdown("---")
-                col1, col2 = st.columns(2)
-                with col1:
+                # RIGHT COLUMN: EXPECTED MOVE & ITM
+                with col2:
                     st.write("**Expected Move**")
                     expected_move = current_price * vol_used * sqrt(days/365)
                     st.metric("1 Standard Deviation Move (±)", format_currency(expected_move))
-                    st.caption(f"68% probability stock stays within ±${expected_move:.2f}")
-                
-                with col2:
-                    st.write("**Option Expiration Probability (ITM)**")
+                    st.caption(f"68% probability stock stays within ±${expected_move:.2f} at expiration")
+                    
+                    st.markdown("---")
+                    st.write("**Option ITM Probability**")
                     
                     itm_option_type = st.radio(
-                        "Calculate ITM probability for:",
-                        ["Call (Price > Strike)", "Put (Price < Strike)"],
+                        "Option Type:",
+                        ["Call", "Put"],
                         index=0 if option_type == "Call" else 1,
                         key="itm_option_type",
                         horizontal=True
@@ -989,17 +1021,22 @@ with tab1:
                     try:
                         sigma = vol_used
                         T_years = days / 365
-                        d2 = (log(current_price / strike) + (risk_free_rate - dividend_yield - 0.5 * sigma**2) * T_years) / (sigma * sqrt(T_years))
                         
-                        if itm_option_type == "Call (Price > Strike)":
-                            prob_itm = norm.cdf(d2)
-                            st.metric(f"Probability Call is ITM (Price > ${strike:,.2f})", f"{prob_itm*100:.1f}%")
-                            st.caption(f"Stock must close above ${strike:,.2f} at expiration")
+                        if sigma * sqrt(T_years) == 0:
+                            prob_itm = 0.5
                         else:
-                            prob_itm = norm.cdf(-d2)
-                            st.metric(f"Probability Put is ITM (Price < ${strike:,.2f})", f"{prob_itm*100:.1f}%")
-                            st.caption(f"Stock must close below ${strike:,.2f} at expiration")
-                    except:
+                            d2 = (log(current_price / strike) + (risk_free_rate - dividend_yield - 0.5 * sigma**2) * T_years) / (sigma * sqrt(T_years))
+                            
+                            if itm_option_type == "Call":
+                                prob_itm = norm.cdf(d2)
+                            else:
+                                prob_itm = norm.cdf(-d2)
+                        
+                        # Cap at realistic values (never 0% or 100%)
+                        prob_itm = max(0.0001, min(0.9999, prob_itm))
+                        st.metric(f"Probability {itm_option_type} is ITM", f"{prob_itm*100:.1f}%")
+                        st.caption(f"Stock must close { 'above' if itm_option_type == 'Call' else 'below' } ${strike:,.2f} at expiration")
+                    except Exception as e:
                         st.error("ITM probability calculation error")
                 
                 # TRADE MANAGEMENT
