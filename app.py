@@ -390,7 +390,24 @@ def get_earnings_history_with_numbers(ticker):
     except:
         pass
     
-    # Sort by date (newest first)
+    # Also try to get from financials if available
+    if not earnings_data:
+        try:
+            financials = get_cached_financials(ticker)
+            if financials is not None and not financials.empty and 'Net Income' in financials.index:
+                net_income = financials.loc['Net Income']
+                if not net_income.empty:
+                    for i, (date, value) in enumerate(net_income.items()):
+                        if i < 4:
+                            earnings_data.append({
+                                'date': date,
+                                'actual_eps': value / 1e6 if abs(value) > 1e6 else value,
+                                'estimated_eps': None,
+                                'surprise_pct': None
+                            })
+        except:
+            pass
+    
     earnings_data.sort(key=lambda x: x['date'], reverse=True)
     return earnings_data[:8]
 
@@ -407,17 +424,6 @@ def get_future_earnings_dates(ticker):
                 if isinstance(earnings_date, list) and len(earnings_date) > 0:
                     return earnings_date[0]
                 return earnings_date
-        return None
-    except:
-        return None
-
-def get_earnings_estimates(ticker):
-    """Get future earnings estimates from Yahoo Finance"""
-    try:
-        stock = yf.Ticker(ticker)
-        earnings_est = stock.earnings_estimate
-        if earnings_est is not None and not earnings_est.empty:
-            return earnings_est
         return None
     except:
         return None
@@ -551,11 +557,19 @@ def get_stock_data(ticker):
     }
 
 def calculate_rsi(data, window=14):
+    """Calculate RSI - Standard Wilder's smoothing method"""
     delta = data.diff()
-    gain = (delta.where(delta > 0, 0)).rolling(window=window).mean()
-    loss = (-delta.where(delta < 0, 0)).rolling(window=window).mean()
-    rs = gain / loss
+    
+    gain = delta.where(delta > 0, 0)
+    loss = -delta.where(delta < 0, 0)
+    
+    # Use Wilder's smoothing (exponential moving average)
+    avg_gain = gain.ewm(alpha=1/window, min_periods=window, adjust=False).mean()
+    avg_loss = loss.ewm(alpha=1/window, min_periods=window, adjust=False).mean()
+    
+    rs = avg_gain / avg_loss
     rsi = 100 - (100 / (1 + rs))
+    
     return rsi
 
 def get_risk_free_rate():
@@ -568,19 +582,31 @@ def get_risk_free_rate():
         return 0.045
 
 def get_dividend_yield(ticker):
-    """Get dividend yield with sanity check"""
+    """Get dividend yield with proper conversion and sanity check"""
     try:
         info = get_cached_stock_info(ticker)
         dividend_yield = info.get('dividendYield', 0)
+        dividend_rate = info.get('dividendRate', 0)
+        current_price = info.get('currentPrice', info.get('regularMarketPrice', 0))
         
+        # If dividend_yield is > 1, it's likely in percentage format (e.g., 2 = 2%)
+        if dividend_yield and dividend_yield > 1:
+            dividend_yield = dividend_yield / 100
+        
+        # Calculate from dividend rate if available (more reliable)
+        if dividend_rate and current_price and dividend_rate > 0:
+            calculated_yield = dividend_rate / current_price
+            if 0 < calculated_yield < 0.15:
+                return calculated_yield
+        
+        # If we have a reasonable yield from API, use it
         if dividend_yield and 0 < dividend_yield < 0.15:
             return dividend_yield
         
-        dividend_rate = info.get('dividendRate', 0)
-        current_price = info.get('currentPrice', info.get('regularMarketPrice', 0))
-        if dividend_rate and current_price and dividend_rate > 0:
+        # Special case: if dividend_rate exists, use calculated
+        if dividend_rate and current_price:
             calculated = dividend_rate / current_price
-            if 0 < calculated < 0.15:
+            if calculated > 0:
                 return calculated
         
         return 0
@@ -908,6 +934,22 @@ with st.sidebar:
         
         .stDataFrame, .dataframe, table, th, td { color: #000000 !important; background-color: #ffffff !important; }
         .stDataFrame th { background-color: #f0f0f0 !important; color: #000000 !important; }
+        
+        /* Light mode tabs specific */
+        .stTabs [data-baseweb="tab-list"] {
+            background-color: #ffffff !important;
+        }
+        
+        .stTabs [data-baseweb="tab"] {
+            background-color: #f8f9fa !important;
+            color: #000000 !important;
+        }
+        
+        .stTabs [aria-selected="true"] {
+            background-color: #e0e0e0 !important;
+            color: #000000 !important;
+            font-weight: bold !important;
+        }
         </style>
         """, unsafe_allow_html=True)
     
@@ -936,38 +978,43 @@ with st.sidebar:
         """, unsafe_allow_html=True)
 
 # ============================================================
-# STICKY TABS CSS (Works for both themes)
+# STRONG STICKY TABS CSS
 # ============================================================
 st.markdown("""
 <style>
-/* Make tabs sticky - stays at top while scrolling */
-.stTabs [data-baseweb="tab-list"] {
+/* Force sticky tabs - multiple selectors for reliability */
+.stTabs [data-baseweb="tab-list"],
+div[data-testid="stTabs"] div[data-baseweb="tab-list"],
+.stTabs > div > div > div > div[role="tablist"] {
     position: sticky !important;
     top: 0 !important;
-    z-index: 999 !important;
+    z-index: 9999 !important;
+    background-color: inherit !important;
     padding-top: 10px !important;
     padding-bottom: 10px !important;
-    background-color: inherit !important;
+    margin-bottom: 0 !important;
 }
 
-/* Ensure tab content doesn't get hidden under sticky tabs */
+/* Ensure tab panel has proper spacing */
 .stTabs [data-baseweb="tab-panel"] {
-    padding-top: 15px !important;
+    padding-top: 20px !important;
 }
 
-/* Fix for the main container padding */
+/* Make sure the main container doesn't interfere */
 .main .block-container {
     padding-top: 0rem !important;
 }
 
-/* Ensure the sticky tabs background matches the theme */
-[data-testid="stAppViewContainer"] .stTabs [data-baseweb="tab-list"] {
+/* Light mode specific - tabs background */
+[data-testid="stAppViewContainer"] .stTabs [data-baseweb="tab-list"],
+[data-testid="stAppViewContainer"] div[data-testid="stTabs"] div[data-baseweb="tab-list"] {
     background-color: #ffffff !important;
 }
 
-/* Override for dark mode */
+/* Dark mode specific - tabs background */
 @media (prefers-color-scheme: dark) {
-    [data-testid="stAppViewContainer"] .stTabs [data-baseweb="tab-list"] {
+    [data-testid="stAppViewContainer"] .stTabs [data-baseweb="tab-list"],
+    [data-testid="stAppViewContainer"] div[data-testid="stTabs"] div[data-baseweb="tab-list"] {
         background-color: #1e1e2e !important;
     }
 }
@@ -1128,6 +1175,7 @@ with tab1:
                 volatility = st.sidebar.number_input("Manual Volatility (%):", value=volatility, step=1.0)
                 vol_to_use = volatility / 100
             
+            # Calculate RSI using corrected function
             rsi = calculate_rsi(hist['Close'])
             current_rsi = rsi.iloc[-1] if not rsi.empty else 50
             asset_type = "Index/ETF" if is_index_ticker else "Stock"
@@ -1159,10 +1207,11 @@ with tab1:
             with col3:
                 st.metric("Volatility", vol_source_text)
             with col4:
+                dividend_yield_pct = dividend_yield * 100
                 st.metric("RSI (14)", f"{current_rsi:.1f}")
             with col5:
                 if not is_index_ticker:
-                    st.metric("Dividend Yield", format_percentage(dividend_yield*100) if dividend_yield > 0 else "N/A")
+                    st.metric("Dividend Yield", f"{dividend_yield_pct:.2f}%" if dividend_yield > 0 else "N/A")
                 else:
                     st.metric("Dividend Yield", "N/A")
             st.markdown("---")
@@ -1185,7 +1234,6 @@ with tab1:
                 
                 next_earnings = get_future_earnings_dates(ticker)
                 earnings_history = get_earnings_history_with_numbers(ticker)
-                earnings_estimates = get_earnings_estimates(ticker)
                 
                 col1, col2, col3 = st.columns(3)
                 
@@ -1222,35 +1270,36 @@ with tab1:
                                 st.write(f"📊 {date_str}")
                             st.markdown("---")
                     else:
-                        st.info("Historical data not available")
+                        st.info("Historical earnings data not available")
                 
                 with col3:
                     st.markdown("**📈 Future Estimates**")
-                    if earnings_estimates is not None and not earnings_estimates.empty:
-                        if 'eps' in earnings_estimates.columns:
-                            eps_est = earnings_estimates['eps'].iloc[0] if not earnings_estimates['eps'].empty else None
-                            if eps_est:
-                                st.metric("Next Quarter EPS Estimate", f"${eps_est:.2f}")
-                        
-                        if 'revenue' in earnings_estimates.columns:
-                            rev_est = earnings_estimates['revenue'].iloc[0] if not earnings_estimates['revenue'].empty else None
-                            if rev_est:
-                                st.metric("Next Quarter Revenue Estimate", format_large_number(rev_est))
-                    else:
-                        target_mean = info.get('targetMeanPrice', 0)
-                        if target_mean:
-                            st.metric("Analyst Target Price", format_currency(target_mean))
-                        
-                        recommendation = info.get('recommendationKey', '')
-                        if recommendation:
-                            st.metric("Analyst Consensus", recommendation.upper())
+                    target_mean = info.get('targetMeanPrice', 0)
+                    if target_mean:
+                        st.metric("Analyst Target Price", format_currency(target_mean))
+                    
+                    recommendation = info.get('recommendationKey', '')
+                    if recommendation:
+                        st.metric("Analyst Consensus", recommendation.upper())
+                    
+                    # Try to get earnings estimate
+                    try:
+                        stock_est = yf.Ticker(ticker)
+                        earnings_est = stock_est.earnings_estimate
+                        if earnings_est is not None and not earnings_est.empty:
+                            if 'eps' in earnings_est.columns:
+                                eps_est = earnings_est['eps'].iloc[0] if not earnings_est['eps'].empty else None
+                                if eps_est:
+                                    st.metric("Next Quarter EPS Estimate", f"${eps_est:.2f}")
+                    except:
+                        pass
                     
                     st.caption("💡 Estimates based on analyst forecasts")
                 
                 st.markdown("---")
                 
                 # Earnings Surprise Chart
-                if earnings_history and len([e for e in earnings_history if e.get('surprise_pct') is not None]) >= 4:
+                if earnings_history and len([e for e in earnings_history if e.get('surprise_pct') is not None]) >= 2:
                     st.subheader("📊 Earnings Surprise Trend")
                     
                     surprise_data = []
@@ -1345,13 +1394,14 @@ with tab1:
                     st.write(f"**PEG Ratio:** {info.get('pegRatio', 0):,.2f}" if info.get('pegRatio') else "N/A")
                     st.write(f"**Price/Book:** {info.get('priceToBook', 0):,.2f}" if info.get('priceToBook') else "N/A")
                     st.write(f"**Price/Sales:** {info.get('priceToSalesTrailing12Months', 0):,.2f}" if info.get('priceToSalesTrailing12Months') else "N/A")
-                    st.write(f"**Dividend Yield:** {format_percentage(dividend_yield*100) if dividend_yield > 0 else 'N/A'}")
+                    dividend_yield_pct = dividend_yield * 100
+                    st.write(f"**Dividend Yield:** {dividend_yield_pct:.2f}%" if dividend_yield > 0 else "N/A")
                 st.write(f"**Beta:** {info.get('beta', 'N/A')}")
             st.markdown("---")
             
-            # FINANCIAL STATEMENTS (Original Box Format)
+            # FINANCIAL STATEMENTS (Formatted with B/M/K)
             if not is_index_ticker and not income_statement.empty:
-                st.subheader("💰 Key Financials (in Millions)")
+                st.subheader("💰 Key Financials")
                 
                 if not income_statement.empty:
                     latest_income = income_statement.iloc[:, 0] if len(income_statement.columns) > 0 else None
@@ -1408,23 +1458,22 @@ with tab1:
                 current_ratio = current_assets / current_liabilities if current_liabilities > 0 else 0
                 
                 financials = {
-                    "Total Revenue": total_revenue / 1e6 if total_revenue else 0,
-                    "Gross Profit": gross_profit / 1e6 if gross_profit else 0,
-                    "Operating Income": operating_income / 1e6 if operating_income else 0,
-                    "Net Income": net_income / 1e6 if net_income else 0,
-                    "Operating Cash Flow": operating_cashflow / 1e6 if operating_cashflow else 0,
-                    "Free Cash Flow": free_cashflow / 1e6 if free_cashflow else 0,
-                    "Total Assets": total_assets / 1e6 if total_assets else 0,
-                    "Total Debt": total_debt / 1e6 if total_debt else 0,
-                    "Total Equity": total_equity / 1e6 if total_equity else 0,
-                    "Current Assets": current_assets / 1e6 if current_assets else 0,
-                    "Current Liabilities": current_liabilities / 1e6 if current_liabilities else 0,
-                    "Working Capital": working_capital / 1e6 if working_capital else 0,
-                    "Current Ratio": current_ratio,
+                    "Total Revenue": format_large_number(total_revenue),
+                    "Gross Profit": format_large_number(gross_profit),
+                    "Operating Income": format_large_number(operating_income),
+                    "Net Income": format_large_number(net_income),
+                    "Operating Cash Flow": format_large_number(operating_cashflow),
+                    "Free Cash Flow": format_large_number(free_cashflow),
+                    "Total Assets": format_large_number(total_assets),
+                    "Total Debt": format_large_number(total_debt),
+                    "Total Equity": format_large_number(total_equity),
+                    "Current Assets": format_large_number(current_assets),
+                    "Current Liabilities": format_large_number(current_liabilities),
+                    "Working Capital": format_large_number(working_capital),
+                    "Current Ratio": f"{current_ratio:.2f}",
                 }
                 
-                df = pd.DataFrame(list(financials.items()), columns=["Metric", "Value ($M)"])
-                df["Value ($M)"] = df["Value ($M)"].apply(lambda x: f"${x:,.2f}M" if x > 0 else "N/A")
+                df = pd.DataFrame(list(financials.items()), columns=["Metric", "Value"])
                 st.dataframe(df, use_container_width=True, hide_index=True)
                 st.markdown("---")
             
