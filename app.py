@@ -873,30 +873,60 @@ with st.sidebar:
         """, unsafe_allow_html=True)
 
 # ============================================================
-# STICKY TABS CSS
+# COMPLETE STICKY TABS CSS
 # ============================================================
 st.markdown("""
 <style>
-.stTabs [data-baseweb="tab-list"],
-div[data-testid="stTabs"] div[data-baseweb="tab-list"],
-.stTabs > div > div > div > div[role="tablist"] {
+/* Main tabs container */
+.stTabs {
     position: sticky !important;
     top: 0 !important;
-    z-index: 9999 !important;
+    z-index: 100 !important;
+    background-color: var(--background-color, #ffffff) !important;
+}
+
+/* The tab list container */
+.stTabs [data-baseweb="tab-list"] {
+    position: sticky !important;
+    top: 0 !important;
+    z-index: 100 !important;
     background-color: inherit !important;
     padding-top: 10px !important;
     padding-bottom: 10px !important;
     margin-bottom: 0 !important;
+    border-bottom: 1px solid rgba(128, 128, 128, 0.2) !important;
 }
-.stTabs [data-baseweb="tab-panel"] { padding-top: 20px !important; }
-.main .block-container { padding-top: 0rem !important; }
-[data-testid="stAppViewContainer"] .stTabs [data-baseweb="tab-list"],
-[data-testid="stAppViewContainer"] div[data-testid="stTabs"] div[data-baseweb="tab-list"] {
+
+/* Individual tab buttons */
+.stTabs [data-baseweb="tab"] {
+    background-color: transparent !important;
+    font-size: 1rem !important;
+    padding: 0.5rem 1rem !important;
+}
+
+/* Active tab */
+.stTabs [aria-selected="true"] {
+    font-weight: bold !important;
+    border-bottom: 2px solid #89b4fa !important;
+}
+
+/* Tab panel content */
+.stTabs [data-baseweb="tab-panel"] {
+    padding-top: 20px !important;
+}
+
+/* Light mode background */
+[data-testid="stAppViewContainer"] {
     background-color: #ffffff !important;
 }
+
+[data-testid="stAppViewContainer"] .stTabs [data-baseweb="tab-list"] {
+    background-color: #ffffff !important;
+}
+
+/* Dark mode background */
 @media (prefers-color-scheme: dark) {
-    [data-testid="stAppViewContainer"] .stTabs [data-baseweb="tab-list"],
-    [data-testid="stAppViewContainer"] div[data-testid="stTabs"] div[data-baseweb="tab-list"] {
+    [data-testid="stAppViewContainer"] .stTabs [data-baseweb="tab-list"] {
         background-color: #1e1e2e !important;
     }
 }
