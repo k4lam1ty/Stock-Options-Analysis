@@ -309,10 +309,14 @@ def get_catalyst_news(ticker, max_articles=15):
     return unique_items[:max_articles]
 
 # ============================================================
-# EARNINGS FUNCTIONS
+# IMPROVED EARNINGS FUNCTIONS
 # ============================================================
 
 def get_next_earnings(ticker):
+    """
+    Enhanced earnings date detection with multiple fallback methods
+    """
+    # Method 1: Try yfinance calendar
     try:
         stock = yf.Ticker(ticker)
         calendar = stock.calendar
@@ -321,19 +325,183 @@ def get_next_earnings(ticker):
                 earnings_date = calendar.loc['Earnings Date']
                 if isinstance(earnings_date, pd.Series):
                     earnings_date = earnings_date.iloc[0]
-                if isinstance(earnings_date, datetime) or isinstance(earnings_date, pd.Timestamp):
+                if isinstance(earnings_date, (datetime, pd.Timestamp)):
                     return earnings_date
                 if isinstance(earnings_date, list) and len(earnings_date) > 0:
                     return earnings_date[0]
+    except:
+        pass
+    
+    # Method 2: Try yfinance info
+    try:
         info = get_cached_stock_info(ticker)
         earnings_date = info.get('earningsDate', None)
         if earnings_date:
-            if isinstance(earnings_date, list):
+            if isinstance(earnings_date, list) and len(earnings_date) > 0:
                 return earnings_date[0]
             return earnings_date
-        return None
     except:
-        return None
+        pass
+    
+    # Method 3: Try to scrape from Yahoo Finance page
+    try:
+        url = f"https://finance.yahoo.com/quote/{ticker}/calendar"
+        headers = {
+            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36'
+        }
+        
+        response = requests.get(url, headers=headers, timeout=5)
+        soup = BeautifulSoup(response.content, 'html.parser')
+        
+        # Look for earnings date in the calendar table
+        tables = soup.find_all('table')
+        for table in tables:
+            rows = table.find_all('tr')
+            for row in rows:
+                cells = row.find_all('td')
+                if len(cells) >= 2:
+                    label = cells[0].get_text().strip().lower()
+                    if 'earnings date' in label or 'earnings' in label:
+                        date_text = cells[1].get_text().strip()
+                        if date_text and date_text != '-':
+                            # Parse the date string
+                            try:
+                                # Handle formats like "Mar 30, 2026"
+                                earnings_date = datetime.strptime(date_text, '%b %d, %Y')
+                                return earnings_date
+                            except:
+                                try:
+                                    # Handle formats like "2026-03-30"
+                                    earnings_date = datetime.strptime(date_text, '%Y-%m-%d')
+                                    return earnings_date
+                                except:
+                                    pass
+    except:
+        pass
+    
+    return None
+
+def get_earnings_calendar_data(ticker):
+    """
+    Get comprehensive earnings calendar data including date, time, and estimates
+    """
+    earnings_info = {
+        'date': None,
+        'time': None,
+        'eps_estimate': None,
+        'revenue_estimate': None,
+        'confirmed': False
+    }
+    
+    # Method 1: Try to get from Yahoo Finance calendar via scraping
+    try:
+        url = f"https://finance.yahoo.com/quote/{ticker}/calendar"
+        headers = {
+            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36'
+        }
+        
+        response = requests.get(url, headers=headers, timeout=5)
+        soup = BeautifulSoup(response.content, 'html.parser')
+        
+        # Look for earnings data in the calendar
+        tables = soup.find_all('table')
+        for table in tables:
+            rows = table.find_all('tr')
+            for row in rows:
+                cells = row.find_all('td')
+                if len(cells) >= 2:
+                    label = cells[0].get_text().strip().lower()
+                    value = cells[1].get_text().strip()
+                    
+                    if 'earnings date' in label:
+                        # Parse date and time
+                        if value and value != '-':
+                            # Example: "Mar 30, 2026, 8:30 AM"
+                            try:
+                                if ',' in value and ('AM' in value or 'PM' in value):
+                                    # Has time component
+                                    parts = value.split(',')
+                                    if len(parts) >= 2:
+                                        date_part = parts[0] + ',' + parts[1]
+                                        time_part = parts[-1].strip()
+                                        earnings_info['time'] = time_part
+                                        earnings_info['date'] = datetime.strptime(date_part.strip(), '%b %d, %Y')
+                                        earnings_info['confirmed'] = True
+                                    else:
+                                        earnings_info['date'] = datetime.strptime(value.split(',')[0].strip(), '%b %d, %Y')
+                                        earnings_info['confirmed'] = True
+                                else:
+                                    earnings_info['date'] = datetime.strptime(value, '%b %d, %Y')
+                                    earnings_info['confirmed'] = True
+                            except:
+                                try:
+                                    earnings_info['date'] = datetime.strptime(value, '%Y-%m-%d')
+                                    earnings_info['confirmed'] = True
+                                except:
+                                    pass
+                    
+                    elif 'eps estimate' in label and 'earnings' in label.lower():
+                        try:
+                            if value and value != '-':
+                                if value.startswith('$'):
+                                    value = value[1:]
+                                earnings_info['eps_estimate'] = float(value.replace(',', ''))
+                        except:
+                            pass
+                    
+                    elif 'revenue estimate' in label:
+                        try:
+                            if value and value != '-':
+                                # Parse revenue like "10.5M" or "1.2B"
+                                if 'M' in value:
+                                    earnings_info['revenue_estimate'] = float(value.replace('M', '').replace('$', '')) * 1_000_000
+                                elif 'B' in value:
+                                    earnings_info['revenue_estimate'] = float(value.replace('B', '').replace('$', '')) * 1_000_000_000
+                                else:
+                                    earnings_info['revenue_estimate'] = float(value.replace('$', '').replace(',', ''))
+                        except:
+                            pass
+    
+    except Exception as e:
+        pass
+    
+    # Method 2: Try yfinance info if scraping failed
+    if not earnings_info['date']:
+        try:
+            stock = yf.Ticker(ticker)
+            info = stock.info
+            earnings_date = info.get('earningsDate', None)
+            if earnings_date:
+                if isinstance(earnings_date, list):
+                    earnings_info['date'] = earnings_date[0]
+                else:
+                    earnings_info['date'] = earnings_date
+                earnings_info['confirmed'] = True
+            
+            # Try to get estimates
+            eps_est = info.get('epsForward', None)
+            if eps_est:
+                earnings_info['eps_estimate'] = eps_est
+        except:
+            pass
+    
+    # Method 3: Try yfinance calendar
+    if not earnings_info['date']:
+        try:
+            stock = yf.Ticker(ticker)
+            calendar = stock.calendar
+            if calendar is not None and not calendar.empty:
+                if 'Earnings Date' in calendar.index:
+                    earnings_date = calendar.loc['Earnings Date']
+                    if isinstance(earnings_date, pd.Series):
+                        earnings_date = earnings_date.iloc[0]
+                    if isinstance(earnings_date, (datetime, pd.Timestamp)):
+                        earnings_info['date'] = earnings_date
+                        earnings_info['confirmed'] = True
+        except:
+            pass
+    
+    return earnings_info
 
 def get_earnings_history_with_numbers(ticker):
     earnings_data = []
@@ -373,20 +541,9 @@ def get_earnings_history_with_numbers(ticker):
     return earnings_data[:8]
 
 def get_future_earnings_dates(ticker):
-    try:
-        stock = yf.Ticker(ticker)
-        calendar = stock.calendar
-        if calendar is not None and not calendar.empty:
-            if 'Earnings Date' in calendar.index:
-                earnings_date = calendar.loc['Earnings Date']
-                if isinstance(earnings_date, pd.Series):
-                    earnings_date = earnings_date.iloc[0]
-                if isinstance(earnings_date, list) and len(earnings_date) > 0:
-                    return earnings_date[0]
-                return earnings_date
-        return None
-    except:
-        return None
+    """Enhanced version that returns both date and time"""
+    earnings_info = get_earnings_calendar_data(ticker)
+    return earnings_info['date']
 
 # ============================================================
 # IMPLIED VOLATILITY FUNCTIONS (IMPROVED)
@@ -873,60 +1030,30 @@ with st.sidebar:
         """, unsafe_allow_html=True)
 
 # ============================================================
-# COMPLETE STICKY TABS CSS
+# STICKY TABS CSS (ORIGINAL WORKING VERSION)
 # ============================================================
 st.markdown("""
 <style>
-/* Main tabs container */
-.stTabs {
+.stTabs [data-baseweb="tab-list"],
+div[data-testid="stTabs"] div[data-baseweb="tab-list"],
+.stTabs > div > div > div > div[role="tablist"] {
     position: sticky !important;
     top: 0 !important;
-    z-index: 100 !important;
-    background-color: var(--background-color, #ffffff) !important;
-}
-
-/* The tab list container */
-.stTabs [data-baseweb="tab-list"] {
-    position: sticky !important;
-    top: 0 !important;
-    z-index: 100 !important;
+    z-index: 9999 !important;
     background-color: inherit !important;
     padding-top: 10px !important;
     padding-bottom: 10px !important;
     margin-bottom: 0 !important;
-    border-bottom: 1px solid rgba(128, 128, 128, 0.2) !important;
 }
-
-/* Individual tab buttons */
-.stTabs [data-baseweb="tab"] {
-    background-color: transparent !important;
-    font-size: 1rem !important;
-    padding: 0.5rem 1rem !important;
-}
-
-/* Active tab */
-.stTabs [aria-selected="true"] {
-    font-weight: bold !important;
-    border-bottom: 2px solid #89b4fa !important;
-}
-
-/* Tab panel content */
-.stTabs [data-baseweb="tab-panel"] {
-    padding-top: 20px !important;
-}
-
-/* Light mode background */
-[data-testid="stAppViewContainer"] {
+.stTabs [data-baseweb="tab-panel"] { padding-top: 20px !important; }
+.main .block-container { padding-top: 0rem !important; }
+[data-testid="stAppViewContainer"] .stTabs [data-baseweb="tab-list"],
+[data-testid="stAppViewContainer"] div[data-testid="stTabs"] div[data-baseweb="tab-list"] {
     background-color: #ffffff !important;
 }
-
-[data-testid="stAppViewContainer"] .stTabs [data-baseweb="tab-list"] {
-    background-color: #ffffff !important;
-}
-
-/* Dark mode background */
 @media (prefers-color-scheme: dark) {
-    [data-testid="stAppViewContainer"] .stTabs [data-baseweb="tab-list"] {
+    [data-testid="stAppViewContainer"] .stTabs [data-baseweb="tab-list"],
+    [data-testid="stAppViewContainer"] div[data-testid="stTabs"] div[data-baseweb="tab-list"] {
         background-color: #1e1e2e !important;
     }
 }
@@ -1091,27 +1218,59 @@ with tab1:
                 st.metric("Auto-Refresh", "OFF" if not auto_refresh else f"{interval_seconds}s")
             st.markdown("---")
             
-            # EARNINGS CALENDAR
+            # EARNINGS CALENDAR - ENHANCED VERSION
             if not is_index_ticker:
                 st.subheader("📅 Earnings Calendar & Estimates")
-                next_earnings = get_future_earnings_dates(ticker)
+                
+                # Use enhanced earnings info
+                earnings_info = get_earnings_calendar_data(ticker)
+                next_earnings = earnings_info['date']
+                earnings_time = earnings_info.get('time', '')
+                earnings_eps_est = earnings_info.get('eps_estimate', None)
+                earnings_rev_est = earnings_info.get('revenue_estimate', None)
+                earnings_confirmed = earnings_info.get('confirmed', False)
+                
                 earnings_history = get_earnings_history_with_numbers(ticker)
+                
                 col1, col2, col3 = st.columns(3)
                 with col1:
                     st.markdown("**📅 Next Earnings Date**")
                     if next_earnings:
                         next_earnings_date = pd.to_datetime(next_earnings).date()
                         days_until = (next_earnings_date - date.today()).days
-                        st.metric("Date", next_earnings_date.strftime('%Y-%m-%d'))
+                        
+                        # Show earnings time if available
+                        if earnings_time:
+                            st.metric("Date & Time", f"{next_earnings_date.strftime('%Y-%m-%d')} at {earnings_time}")
+                        else:
+                            st.metric("Date", next_earnings_date.strftime('%Y-%m-%d'))
+                        
                         st.caption(f"{days_until} days from today")
+                        
+                        # Show if confirmed
+                        if earnings_confirmed:
+                            st.success("✅ Confirmed date")
+                        else:
+                            st.info("📌 Estimated date (check company website)")
+                        
                         if days_until <= 30:
                             st.warning("⚠️ Earnings within 30 days - IV likely elevated")
                     else:
-                        st.info("Date not available")
+                        st.info("Date not available - check company website")
+                
                 with col2:
-                    st.markdown("**📊 Recent Earnings**")
+                    st.markdown("**📊 Estimates**")
+                    if earnings_eps_est:
+                        st.metric("EPS Estimate", f"${earnings_eps_est:.2f}")
+                    if earnings_rev_est:
+                        st.metric("Revenue Estimate", format_large_number(earnings_rev_est))
+                    if not earnings_eps_est and not earnings_rev_est:
+                        st.info("Estimates not available")
+                
+                with col3:
+                    st.markdown("**📈 Recent Earnings**")
                     if earnings_history:
-                        for earnings in earnings_history[:4]:
+                        for earnings in earnings_history[:3]:
                             date_str = earnings['date'].strftime('%Y-%m-%d') if isinstance(earnings['date'], (datetime, pd.Timestamp)) else str(earnings['date'])
                             actual = earnings.get('actual_eps')
                             estimated = earnings.get('estimated_eps')
@@ -1129,25 +1288,6 @@ with tab1:
                             st.markdown("---")
                     else:
                         st.info("Historical earnings data not available")
-                with col3:
-                    st.markdown("**📈 Future Estimates**")
-                    target_mean = info.get('targetMeanPrice', 0)
-                    if target_mean:
-                        st.metric("Analyst Target Price", format_currency(target_mean))
-                    recommendation = info.get('recommendationKey', '')
-                    if recommendation:
-                        st.metric("Analyst Consensus", recommendation.upper())
-                    try:
-                        stock_est = yf.Ticker(ticker)
-                        earnings_est = stock_est.earnings_estimate
-                        if earnings_est is not None and not earnings_est.empty:
-                            if 'eps' in earnings_est.columns:
-                                eps_est = earnings_est['eps'].iloc[0] if not earnings_est['eps'].empty else None
-                                if eps_est:
-                                    st.metric("Next Quarter EPS Estimate", f"${eps_est:.2f}")
-                    except:
-                        pass
-                    st.caption("💡 Estimates based on analyst forecasts")
                 st.markdown("---")
                 if earnings_history and len([e for e in earnings_history if e.get('surprise_pct') is not None]) >= 2:
                     st.subheader("📊 Earnings Surprise Trend")
