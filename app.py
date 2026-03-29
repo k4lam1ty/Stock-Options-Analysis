@@ -978,139 +978,65 @@ with st.sidebar:
         """, unsafe_allow_html=True)
 
 # ============================================================
-# STRONG STICKY TABS CSS
+# COMPLETE STICKY TABS CSS
 # ============================================================
 st.markdown("""
 <style>
-/* Force sticky tabs - multiple selectors for reliability */
-.stTabs [data-baseweb="tab-list"],
-div[data-testid="stTabs"] div[data-baseweb="tab-list"],
-.stTabs > div > div > div > div[role="tablist"] {
+/* Main tabs container */
+.stTabs {
     position: sticky !important;
     top: 0 !important;
-    z-index: 9999 !important;
+    z-index: 100 !important;
+    background-color: var(--background-color, #ffffff) !important;
+}
+
+/* The tab list container */
+.stTabs [data-baseweb="tab-list"] {
+    position: sticky !important;
+    top: 0 !important;
+    z-index: 100 !important;
     background-color: inherit !important;
     padding-top: 10px !important;
     padding-bottom: 10px !important;
     margin-bottom: 0 !important;
+    border-bottom: 1px solid rgba(128, 128, 128, 0.2) !important;
 }
 
-/* Ensure tab panel has proper spacing */
+/* Individual tab buttons */
+.stTabs [data-baseweb="tab"] {
+    background-color: transparent !important;
+    font-size: 1rem !important;
+    padding: 0.5rem 1rem !important;
+}
+
+/* Active tab */
+.stTabs [aria-selected="true"] {
+    font-weight: bold !important;
+    border-bottom: 2px solid #89b4fa !important;
+}
+
+/* Tab panel content */
 .stTabs [data-baseweb="tab-panel"] {
     padding-top: 20px !important;
 }
 
-/* Make sure the main container doesn't interfere */
-.main .block-container {
-    padding-top: 0rem !important;
-}
-
-/* Light mode specific - tabs background */
-[data-testid="stAppViewContainer"] .stTabs [data-baseweb="tab-list"],
-[data-testid="stAppViewContainer"] div[data-testid="stTabs"] div[data-baseweb="tab-list"] {
+/* Light mode background */
+[data-testid="stAppViewContainer"] {
     background-color: #ffffff !important;
 }
 
-/* Dark mode specific - tabs background */
+[data-testid="stAppViewContainer"] .stTabs [data-baseweb="tab-list"] {
+    background-color: #ffffff !important;
+}
+
+/* Dark mode background */
 @media (prefers-color-scheme: dark) {
-    [data-testid="stAppViewContainer"] .stTabs [data-baseweb="tab-list"],
-    [data-testid="stAppViewContainer"] div[data-testid="stTabs"] div[data-baseweb="tab-list"] {
+    [data-testid="stAppViewContainer"] .stTabs [data-baseweb="tab-list"] {
         background-color: #1e1e2e !important;
     }
 }
 </style>
 """, unsafe_allow_html=True)
-
-risk_free_rate = get_risk_free_rate()
-
-with st.sidebar:
-    if request_count > 20:
-        st.warning(f"📊 API requests this minute: {request_count}")
-    if check_rate_limit():
-        st.error("⏳ Rate limited - using cached data")
-    
-    st.header("🔍 Input")
-    ticker = st.text_input(
-        "Stock / Index Ticker:",
-        "SPY",
-        help="Type a ticker symbol (e.g., AAPL, MSFT, GME)"
-    ).upper()
-    st.caption("📝 Type a ticker symbol (e.g., AAPL, MSFT, GME)")
-    
-    st.markdown("---")
-    st.header("💰 Rates")
-    auto_rate = st.checkbox("Auto-fetch Risk-Free Rate (10-Year Treasury)", value=True)
-    if auto_rate:
-        risk_free_rate = get_risk_free_rate()
-        st.success(f"📊 10-Year Treasury Yield: {risk_free_rate*100:.2f}%")
-        manual_override = st.checkbox("Manually override risk-free rate", value=False)
-        if manual_override:
-            manual_rate = st.number_input("Manual Risk-Free Rate (%):", value=risk_free_rate*100, step=0.1) / 100
-            risk_free_rate = manual_rate
-            st.info(f"Using manual rate: {risk_free_rate*100:.2f}%")
-    else:
-        risk_free_rate = st.number_input("Risk-Free Rate (%):", value=4.5, step=0.1) / 100
-    
-    st.markdown("---")
-    st.header("⚙️ Options Calculator")
-    
-    expiration_date = st.date_input(
-        "Expiration Date:",
-        value=date.today(),
-        min_value=date.today(),
-        help="📅 Click calendar to select date"
-    )
-    
-    today = date.today()
-    if expiration_date >= today:
-        days = (expiration_date - today).days
-        st.caption(f"📅 Days to Expiration: **{days} days**")
-    else:
-        days = 0
-        st.error("Expiration date must be in the future")
-    
-    strike = st.number_input(
-        "Strike Price:",
-        value=100.0,
-        step=1.0,
-        help="🔢 Use arrows or type a number"
-    )
-    
-    option_type = st.selectbox(
-        "Option Type:",
-        ["Call", "Put"],
-        index=0,
-        help="📋 Click to select Call or Put"
-    )
-    
-    st.markdown("---")
-    st.header("📊 Volatility Setting")
-    
-    volatility_source = st.radio(
-        "Volatility Source:",
-        ["Historical Volatility (from price data)", "Implied Volatility (from option chain)"],
-        index=0,
-        help="🖱️ Click to select volatility source"
-    )
-    
-    st.markdown("---")
-    st.header("🔄 Auto-Refresh")
-    auto_refresh = st.checkbox("Auto-refresh data", value=False)
-    
-    if auto_refresh:
-        refresh_interval = st.selectbox(
-            "Refresh interval:",
-            ["120 sec", "300 sec", "600 sec"],
-            index=1,
-            help="🖱️ Click to select interval"
-        )
-        interval_seconds = int(refresh_interval.split()[0])
-        st.caption(f"🔄 Refreshing every {interval_seconds} seconds")
-        st.caption(f"⚠️ Frequent refreshes may cause rate limits")
-    else:
-        interval_seconds = 0
-    
-    st.caption(f"📅 Last update: {format_local_time()}")
 
 # ============================================================
 # MAIN APP TABS
