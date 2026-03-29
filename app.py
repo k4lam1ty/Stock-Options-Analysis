@@ -173,7 +173,7 @@ def format_volume(value):
         return f"{value:,.0f}"
 
 # ============================================================
-# IMPROVED EARNINGS FUNCTIONS WITH DEBUGGING
+# IMPROVED EARNINGS FUNCTIONS WITH BETTER DATE & ESTIMATE EXTRACTION
 # ============================================================
 
 def get_earnings_calendar_data_enhanced(ticker, debug=False):
@@ -226,112 +226,268 @@ def get_earnings_calendar_data_enhanced(ticker, debug=False):
                             earnings_info['time'] = str(time_val)
                             if debug:
                                 earnings_info['debug_info'].append(f"Found earnings time: {time_val}")
+            
+            # Try to get estimates from calendar
+            if 'EPS Estimate' in calendar.index:
+                eps_est = calendar.loc['EPS Estimate']
+                if eps_est and not pd.isna(eps_est):
+                    earnings_info['eps_estimate'] = float(eps_est)
+                    if debug:
+                        earnings_info['debug_info'].append(f"Found EPS estimate in calendar: {eps_est}")
+            
+            if 'Revenue Estimate' in calendar.index:
+                rev_est = calendar.loc['Revenue Estimate']
+                if rev_est and not pd.isna(rev_est):
+                    earnings_info['revenue_estimate'] = float(rev_est)
+                    if debug:
+                        earnings_info['debug_info'].append(f"Found Revenue estimate in calendar: {rev_est}")
     except Exception as e:
         if debug:
             earnings_info['debug_info'].append(f"Calendar error: {str(e)}")
     
     # Method 2: Try yfinance info
-    if not earnings_info['date']:
+    if not earnings_info['date'] or not earnings_info['eps_estimate']:
         try:
             info = get_cached_stock_info(ticker)
             if debug:
                 earnings_info['debug_info'].append(f"Method 2 - yfinance info: earningsDate = {info.get('earningsDate', 'Not found')}")
             
-            earnings_date = info.get('earningsDate', None)
-            if earnings_date:
-                if isinstance(earnings_date, list):
-                    earnings_info['date'] = earnings_date[0]
-                else:
-                    earnings_info['date'] = earnings_date
-                earnings_info['confirmed'] = True
-                earnings_info['source'] = 'yfinance info'
-                
-                if debug:
-                    earnings_info['debug_info'].append(f"Found date in info: {earnings_info['date']}")
-                
-                # Get estimates
-                eps_est = info.get('epsForward', None)
-                if eps_est:
-                    earnings_info['eps_estimate'] = eps_est
+            # Get earnings date
+            if not earnings_info['date']:
+                earnings_date = info.get('earningsDate', None)
+                if earnings_date:
+                    if isinstance(earnings_date, list):
+                        earnings_info['date'] = earnings_date[0]
+                    else:
+                        earnings_info['date'] = earnings_date
+                    earnings_info['confirmed'] = True
+                    earnings_info['source'] = 'yfinance info'
+                    
                     if debug:
-                        earnings_info['debug_info'].append(f"Found EPS estimate: {eps_est}")
+                        earnings_info['debug_info'].append(f"Found date in info: {earnings_info['date']}")
+            
+            # Get EPS estimates
+            if not earnings_info['eps_estimate']:
+                # Try various fields that might contain EPS estimates
+                eps_fields = ['epsForward', 'epsTrailingTwelveMonths', 'epsCurrentYear', 'epsNextYear']
+                for field in eps_fields:
+                    eps_est = info.get(field, None)
+                    if eps_est and eps_est > 0:
+                        earnings_info['eps_estimate'] = float(eps_est)
+                        if debug:
+                            earnings_info['debug_info'].append(f"Found EPS estimate in info.{field}: {eps_est}")
+                        break
+            
+            # Get revenue estimates
+            if not earnings_info['revenue_estimate']:
+                rev_est = info.get('revenueEstimate', None)
+                if rev_est and rev_est > 0:
+                    earnings_info['revenue_estimate'] = float(rev_est)
+                    if debug:
+                        earnings_info['debug_info'].append(f"Found Revenue estimate in info: {rev_est}")
+                
+                # Try to get revenue from totalRevenue
+                if not earnings_info['revenue_estimate']:
+                    total_rev = info.get('totalRevenue', None)
+                    if total_rev and total_rev > 0:
+                        earnings_info['revenue_estimate'] = float(total_rev)
+                        if debug:
+                            earnings_info['debug_info'].append(f"Using totalRevenue as reference: {total_rev}")
         except Exception as e:
             if debug:
                 earnings_info['debug_info'].append(f"Info error: {str(e)}")
     
-    # Method 3: Web scraping for more details (time, etc.)
-    if not earnings_info['date'] or not earnings_info['time']:
+    # Method 3: Web scraping for more details
+    if not earnings_info['date'] or not earnings_info['time'] or not earnings_info['eps_estimate']:
         try:
             url = f"https://finance.yahoo.com/quote/{ticker}/calendar"
             if debug:
                 earnings_info['debug_info'].append(f"Method 3 - Web scraping: {url}")
             
             headers = {
-                'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36'
+                'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36',
+                'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,*/*;q=0.8',
+                'Accept-Language': 'en-US,en;q=0.5',
+                'Accept-Encoding': 'gzip, deflate',
+                'Connection': 'keep-alive',
+                'Upgrade-Insecure-Requests': '1'
             }
             
-            response = requests.get(url, headers=headers, timeout=5)
+            response = requests.get(url, headers=headers, timeout=10)
             if debug:
                 earnings_info['debug_info'].append(f"Response status: {response.status_code}")
             
             if response.status_code == 200:
                 soup = BeautifulSoup(response.content, 'html.parser')
                 
-                # Look for earnings date with time
-                earnings_elements = soup.find_all('td', {'data-test': 'CALENDAR-earnings-date-value'})
-                if debug:
-                    earnings_info['debug_info'].append(f"Found {len(earnings_elements)} earnings date elements")
-                
-                for elem in earnings_elements:
-                    text = elem.get_text().strip()
-                    if debug:
-                        earnings_info['debug_info'].append(f"Earnings date text: {text}")
+                # Look for earnings date with time - try multiple selectors
+                if not earnings_info['date'] or not earnings_info['time']:
+                    # Try different selectors for earnings date
+                    selectors = [
+                        'td[data-test="CALENDAR-earnings-date-value"]',
+                        'div[data-test="earnings-date"]',
+                        'span[data-test="earnings-date"]',
+                        'td:contains("Earnings Date") + td'
+                    ]
                     
-                    if text and text != '-':
-                        # Parse date and time
-                        if 'AM' in text or 'PM' in text:
-                            # Extract time part
-                            time_match = re.search(r'(\d+:\d+\s*[AP]M)', text)
-                            if time_match:
-                                earnings_info['time'] = time_match.group(1)
+                    for selector in selectors:
+                        try:
+                            elements = soup.select(selector)
+                            for elem in elements:
+                                text = elem.get_text().strip()
                                 if debug:
-                                    earnings_info['debug_info'].append(f"Extracted time: {earnings_info['time']}")
-                            
-                            # Extract date part
-                            date_text = text.split(',')[0] + ',' + text.split(',')[1] if ',' in text else text
-                            try:
-                                parsed_date = datetime.strptime(date_text.strip(), '%b %d, %Y')
-                                if debug:
-                                    earnings_info['debug_info'].append(f"Parsed date: {parsed_date}")
+                                    earnings_info['debug_info'].append(f"Found with selector '{selector}': {text}")
                                 
-                                if not earnings_info['date']:
-                                    earnings_info['date'] = parsed_date
-                                    earnings_info['confirmed'] = True
-                                    earnings_info['source'] = 'web scraping'
-                                else:
-                                    # Verify date matches
-                                    if earnings_info['date'].date() != parsed_date.date():
-                                        if debug:
-                                            earnings_info['debug_info'].append(f"Date mismatch: {earnings_info['date']} vs {parsed_date}")
-                            except Exception as e:
-                                if debug:
-                                    earnings_info['debug_info'].append(f"Date parse error: {e}")
-            
-            # Look for estimates in the response if not already found
-            if not earnings_info['eps_estimate']:
-                # Try to parse estimates from the page
-                try:
-                    # Look for EPS estimate in the text
-                    text_content = response.text if response.status_code == 200 else ""
-                    eps_pattern = r'EPS Estimate[^$]*\$([\d\.]+)'
-                    eps_match = re.search(eps_pattern, text_content, re.IGNORECASE)
-                    if eps_match:
-                        earnings_info['eps_estimate'] = float(eps_match.group(1))
-                        if debug:
-                            earnings_info['debug_info'].append(f"Found EPS estimate in text: {earnings_info['eps_estimate']}")
-                except:
-                    pass
+                                if text and text != '-' and not text.startswith('No'):
+                                    # Parse date and time
+                                    if 'AM' in text or 'PM' in text:
+                                        # Extract time part
+                                        time_match = re.search(r'(\d+:\d+\s*[AP]M)', text)
+                                        if time_match:
+                                            earnings_info['time'] = time_match.group(1)
+                                            if debug:
+                                                earnings_info['debug_info'].append(f"Extracted time: {earnings_info['time']}")
+                                        
+                                        # Extract date part
+                                        date_text = re.search(r'([A-Za-z]{3}\s+\d{1,2},\s+\d{4})', text)
+                                        if date_text:
+                                            try:
+                                                parsed_date = datetime.strptime(date_text.group(1), '%b %d, %Y')
+                                                if debug:
+                                                    earnings_info['debug_info'].append(f"Parsed date: {parsed_date}")
+                                                
+                                                if not earnings_info['date']:
+                                                    earnings_info['date'] = parsed_date
+                                                    earnings_info['confirmed'] = True
+                                                    earnings_info['source'] = 'web scraping'
+                                            except Exception as e:
+                                                if debug:
+                                                    earnings_info['debug_info'].append(f"Date parse error: {e}")
+                        except:
+                            pass
+                
+                # Look for EPS estimate
+                if not earnings_info['eps_estimate']:
+                    # Try different selectors for EPS estimate
+                    eps_selectors = [
+                        'td[data-test="EPS-ESTIMATE-value"]',
+                        'td:contains("EPS Estimate") + td',
+                        'div[data-test="eps-estimate"]',
+                        'span[data-test="eps-estimate"]'
+                    ]
                     
+                    for selector in eps_selectors:
+                        try:
+                            elements = soup.select(selector)
+                            for elem in elements:
+                                text = elem.get_text().strip()
+                                if debug:
+                                    earnings_info['debug_info'].append(f"EPS selector '{selector}' found: {text}")
+                                
+                                if text and text != '-' and not text.startswith('No'):
+                                    # Extract numeric value
+                                    eps_match = re.search(r'\$?([\d\.]+)', text)
+                                    if eps_match:
+                                        try:
+                                            eps_value = float(eps_match.group(1))
+                                            if eps_value > 0:
+                                                earnings_info['eps_estimate'] = eps_value
+                                                if debug:
+                                                    earnings_info['debug_info'].append(f"Found EPS estimate: {eps_value}")
+                                                break
+                                        except:
+                                            pass
+                        except:
+                            pass
+                
+                # Look for Revenue estimate
+                if not earnings_info['revenue_estimate']:
+                    # Try different selectors for Revenue estimate
+                    rev_selectors = [
+                        'td[data-test="REVENUE-ESTIMATE-value"]',
+                        'td:contains("Revenue Estimate") + td',
+                        'div[data-test="revenue-estimate"]',
+                        'span[data-test="revenue-estimate"]'
+                    ]
+                    
+                    for selector in rev_selectors:
+                        try:
+                            elements = soup.select(selector)
+                            for elem in elements:
+                                text = elem.get_text().strip()
+                                if debug:
+                                    earnings_info['debug_info'].append(f"Revenue selector '{selector}' found: {text}")
+                                
+                                if text and text != '-' and not text.startswith('No'):
+                                    # Parse revenue like "10.5M" or "1.2B"
+                                    try:
+                                        if 'M' in text:
+                                            rev_value = float(re.sub(r'[^\d\.]', '', text)) * 1_000_000
+                                        elif 'B' in text:
+                                            rev_value = float(re.sub(r'[^\d\.]', '', text)) * 1_000_000_000
+                                        else:
+                                            rev_value = float(re.sub(r'[^\d\.]', '', text))
+                                        
+                                        if rev_value > 0:
+                                            earnings_info['revenue_estimate'] = rev_value
+                                            if debug:
+                                                earnings_info['debug_info'].append(f"Found Revenue estimate: {rev_value}")
+                                            break
+                                    except:
+                                        pass
+                        except:
+                            pass
+                
+                # Try to find estimates in the entire page text if selectors failed
+                if not earnings_info['eps_estimate'] or not earnings_info['revenue_estimate']:
+                    page_text = soup.get_text()
+                    
+                    # Look for EPS Estimate in text
+                    if not earnings_info['eps_estimate']:
+                        eps_patterns = [
+                            r'EPS Estimate[^\$]*\$?([\d\.]+)',
+                            r'EPS[^\$]*Estimate[^\$]*\$?([\d\.]+)',
+                            r'Earnings Per Share Estimate[^\$]*\$?([\d\.]+)'
+                        ]
+                        for pattern in eps_patterns:
+                            eps_match = re.search(pattern, page_text, re.IGNORECASE)
+                            if eps_match:
+                                try:
+                                    eps_value = float(eps_match.group(1))
+                                    if eps_value > 0:
+                                        earnings_info['eps_estimate'] = eps_value
+                                        if debug:
+                                            earnings_info['debug_info'].append(f"Found EPS in text: {eps_value}")
+                                        break
+                                except:
+                                    pass
+                    
+                    # Look for Revenue Estimate in text
+                    if not earnings_info['revenue_estimate']:
+                        rev_patterns = [
+                            r'Revenue Estimate[^\$]*\$?([\d\.]+)\s*([MB])',
+                            r'Revenue[^\$]*Estimate[^\$]*\$?([\d\.]+)\s*([MB])',
+                            r'Quarterly Revenue Estimate[^\$]*\$?([\d\.]+)\s*([MB])'
+                        ]
+                        for pattern in rev_patterns:
+                            rev_match = re.search(pattern, page_text, re.IGNORECASE)
+                            if rev_match:
+                                try:
+                                    rev_value = float(rev_match.group(1))
+                                    if len(rev_match.groups()) > 1 and rev_match.group(2):
+                                        multiplier = rev_match.group(2)
+                                        if multiplier.upper() == 'M':
+                                            rev_value *= 1_000_000
+                                        elif multiplier.upper() == 'B':
+                                            rev_value *= 1_000_000_000
+                                    
+                                    if rev_value > 0:
+                                        earnings_info['revenue_estimate'] = rev_value
+                                        if debug:
+                                            earnings_info['debug_info'].append(f"Found Revenue in text: {rev_value}")
+                                        break
+                                except:
+                                    pass
         except Exception as e:
             if debug:
                 earnings_info['debug_info'].append(f"Scraping error: {str(e)}")
@@ -345,15 +501,47 @@ def get_earnings_calendar_data_enhanced(ticker, debug=False):
                 earnings_info['debug_info'].append(f"Method 4 - earnings_estimate: {'Found' if earnings_est is not None else 'None'}")
             
             if earnings_est is not None and not earnings_est.empty:
+                if debug:
+                    earnings_info['debug_info'].append(f"earnings_estimate columns: {earnings_est.columns.tolist() if hasattr(earnings_est, 'columns') else 'N/A'}")
+                
+                # Try to get EPS estimate
                 if 'eps' in earnings_est.columns:
                     eps_val = earnings_est['eps'].iloc[0] if not earnings_est['eps'].empty else None
-                    if eps_val:
-                        earnings_info['eps_estimate'] = eps_val
+                    if eps_val and not pd.isna(eps_val):
+                        earnings_info['eps_estimate'] = float(eps_val)
                         if debug:
                             earnings_info['debug_info'].append(f"Found EPS from earnings_estimate: {eps_val}")
+                
+                # Try to get revenue estimate
+                if 'revenue' in earnings_est.columns:
+                    rev_val = earnings_est['revenue'].iloc[0] if not earnings_est['revenue'].empty else None
+                    if rev_val and not pd.isna(rev_val):
+                        earnings_info['revenue_estimate'] = float(rev_val)
+                        if debug:
+                            earnings_info['debug_info'].append(f"Found Revenue from earnings_estimate: {rev_val}")
         except Exception as e:
             if debug:
                 earnings_info['debug_info'].append(f"earnings_estimate error: {str(e)}")
+    
+    # Method 5: Try to get from quarterly_earnings
+    if not earnings_info['eps_estimate']:
+        try:
+            stock = yf.Ticker(ticker)
+            quarterly_earnings = stock.quarterly_earnings
+            if debug:
+                earnings_info['debug_info'].append(f"Method 5 - quarterly_earnings: {'Found' if quarterly_earnings is not None else 'None'}")
+            
+            if quarterly_earnings is not None and not quarterly_earnings.empty:
+                # Look for the next quarter's estimate
+                if 'epsEstimate' in quarterly_earnings.columns:
+                    eps_est = quarterly_earnings['epsEstimate'].iloc[0] if not quarterly_earnings['epsEstimate'].empty else None
+                    if eps_est and not pd.isna(eps_est):
+                        earnings_info['eps_estimate'] = float(eps_est)
+                        if debug:
+                            earnings_info['debug_info'].append(f"Found EPS from quarterly_earnings: {eps_est}")
+        except Exception as e:
+            if debug:
+                earnings_info['debug_info'].append(f"quarterly_earnings error: {str(e)}")
     
     return earnings_info
 
@@ -546,7 +734,7 @@ def get_catalyst_news(ticker, max_articles=15):
     return unique_items[:max_articles]
 
 # ============================================================
-# IMPLIED VOLATILITY FUNCTIONS (IMPROVED)
+# IMPLIED VOLATILITY FUNCTIONS
 # ============================================================
 
 def get_implied_volatility(ticker, current_price, option_type):
