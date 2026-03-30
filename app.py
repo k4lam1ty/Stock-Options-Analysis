@@ -14,7 +14,250 @@ import os
 import pytz
 import re
 
-st.set_page_config(page_title="Stock Analysis Dashboard", layout="wide")
+st.set_page_config(
+    page_title="Stock Analysis Dashboard", 
+    layout="wide",
+    page_icon="📈",
+    initial_sidebar_state="expanded"
+)
+
+# ============================================================
+# CUSTOM CSS FOR BEAUTIFUL DESIGN & RESPONSIVENESS
+# ============================================================
+
+st.markdown("""
+<style>
+    /* Import Google Font */
+    @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap');
+    
+    /* Global Styles */
+    * {
+        font-family: 'Inter', sans-serif;
+    }
+    
+    /* Smooth transitions for all interactive elements */
+    .stMetric, .stButton button, div[data-testid="stMetric"], button, [data-testid="baseButton-secondary"] {
+        transition: all 0.2s ease-in-out !important;
+    }
+    
+    /* Hover effects for metrics */
+    div[data-testid="stMetric"]:hover {
+        transform: translateY(-3px);
+        box-shadow: 0 6px 16px rgba(0,0,0,0.12) !important;
+    }
+    
+    /* Button hover effects */
+    .stButton button:hover {
+        transform: translateY(-2px);
+        box-shadow: 0 4px 12px rgba(0,0,0,0.15) !important;
+    }
+    
+    /* Custom scrollbar - looks modern */
+    ::-webkit-scrollbar {
+        width: 8px;
+        height: 8px;
+    }
+    
+    ::-webkit-scrollbar-track {
+        background: rgba(128,128,128,0.1);
+        border-radius: 10px;
+    }
+    
+    ::-webkit-scrollbar-thumb {
+        background: #888;
+        border-radius: 10px;
+    }
+    
+    ::-webkit-scrollbar-thumb:hover {
+        background: #555;
+    }
+    
+    /* ========== MOBILE OPTIMIZATIONS ========== */
+    @media (max-width: 768px) {
+        /* Reduce padding on mobile */
+        .main .block-container {
+            padding: 0.75rem !important;
+        }
+        
+        /* Make columns stack vertically on mobile */
+        div[data-testid="column"] {
+            min-width: 100% !important;
+            margin-bottom: 0.75rem !important;
+        }
+        
+        /* Smaller metric values on mobile */
+        div[data-testid="stMetricValue"] {
+            font-size: 1rem !important;
+        }
+        
+        div[data-testid="stMetricLabel"] {
+            font-size: 0.7rem !important;
+        }
+        
+        /* Make tabs more touch-friendly */
+        .stTabs [data-baseweb="tab"] {
+            padding: 0.5rem 0.75rem !important;
+            font-size: 0.8rem !important;
+        }
+        
+        /* Sidebar width adjustment for mobile */
+        .stSidebar {
+            width: 280px !important;
+        }
+        
+        /* Larger buttons for touch */
+        .stButton button {
+            padding: 0.5rem 0.75rem !important;
+            font-size: 0.9rem !important;
+            min-height: 44px !important;
+        }
+        
+        /* Adjust chart heights */
+        iframe {
+            height: 350px !important;
+        }
+        
+        /* Smaller headings */
+        h1, h2, h3, .stSubheader {
+            font-size: 1.2rem !important;
+        }
+        
+        /* Make metric cards more compact */
+        div[data-testid="stMetric"] {
+            padding: 8px !important;
+            margin: 4px 0 !important;
+        }
+        
+        /* Better spacing for expanders */
+        .streamlit-expanderHeader {
+            font-size: 0.9rem !important;
+            padding: 0.5rem !important;
+        }
+    }
+    
+    /* ========== DESKTOP OPTIMIZATIONS ========== */
+    @media (min-width: 769px) {
+        .main .block-container {
+            padding: 1.5rem !important;
+            max-width: 1400px !important;
+            margin: 0 auto !important;
+        }
+        
+        /* Larger metrics on desktop */
+        div[data-testid="stMetric"] {
+            min-width: 130px !important;
+            padding: 12px !important;
+        }
+        
+        div[data-testid="stMetricValue"] {
+            font-size: 1.3rem !important;
+        }
+        
+        /* Better tab spacing */
+        .stTabs [data-baseweb="tab"] {
+            padding: 0.6rem 1.2rem !important;
+            font-size: 0.95rem !important;
+        }
+    }
+    
+    /* ========== BEAUTIFICATION ========== */
+    
+    /* Card-like styling for metrics */
+    div[data-testid="stMetric"] {
+        border-radius: 16px !important;
+        backdrop-filter: blur(0px);
+        box-shadow: 0 2px 8px rgba(0,0,0,0.05);
+    }
+    
+    /* Rounded input fields */
+    .stTextInput input, .stNumberInput input, .stSelectbox select, .stDateInput input {
+        border-radius: 10px !important;
+        border: 1px solid rgba(128,128,128,0.2) !important;
+        padding: 0.5rem 0.75rem !important;
+    }
+    
+    /* Focus state for inputs */
+    .stTextInput input:focus, .stNumberInput input:focus {
+        border-color: #89b4fa !important;
+        box-shadow: 0 0 0 2px rgba(137,180,250,0.2) !important;
+        outline: none !important;
+    }
+    
+    /* Beautiful button styling */
+    .stButton button {
+        border-radius: 10px !important;
+        font-weight: 500 !important;
+        letter-spacing: 0.3px !important;
+    }
+    
+    /* Rounded expanders */
+    .streamlit-expanderHeader {
+        border-radius: 12px !important;
+        font-weight: 500 !important;
+    }
+    
+    /* Better spacing for dividers */
+    hr {
+        margin: 1.5rem 0 !important;
+        opacity: 0.3 !important;
+    }
+    
+    /* Info/Warning/Success boxes styling */
+    .stAlert {
+        border-radius: 12px !important;
+        border-left-width: 4px !important;
+    }
+    
+    /* Dataframe styling */
+    .dataframe {
+        border-radius: 12px !important;
+        overflow: hidden !important;
+    }
+    
+    /* Sidebar beautification */
+    .stSidebar {
+        border-right: 1px solid rgba(128,128,128,0.1) !important;
+    }
+    
+    /* Sidebar headers */
+    .stSidebar .stMarkdown h1, .stSidebar .stMarkdown h2, .stSidebar .stMarkdown h3 {
+        font-weight: 600 !important;
+    }
+    
+    /* Tab styling */
+    .stTabs [data-baseweb="tab-list"] {
+        gap: 8px !important;
+        background-color: transparent !important;
+    }
+    
+    .stTabs [data-baseweb="tab"] {
+        border-radius: 12px 12px 0 0 !important;
+        font-weight: 500 !important;
+    }
+    
+    .stTabs [aria-selected="true"] {
+        border-bottom: 3px solid #89b4fa !important;
+        font-weight: 600 !important;
+    }
+    
+    /* Metric labels - better word wrapping */
+    div[data-testid="stMetricLabel"] {
+        white-space: normal !important;
+        word-wrap: break-word !important;
+        line-height: 1.3 !important;
+    }
+    
+    /* Progress bars and other elements */
+    .stProgress > div > div {
+        border-radius: 10px !important;
+    }
+    
+    /* Code blocks */
+    .stCodeBlock {
+        border-radius: 12px !important;
+    }
+</style>
+""", unsafe_allow_html=True)
 
 # ============================================================
 # RATE LIMIT PROTECTION
@@ -1113,148 +1356,73 @@ def calculate_option_price(S, K, T, r, v, q, option_type):
     return price, delta, gamma, theta, vega
 
 # ============================================================
-# SIDEBAR WITH THEME
+# SIDEBAR WITH THEME (UPDATED WITH BEAUTIFUL COLORS)
 # ============================================================
 
 with st.sidebar:
     st.header("🎨 Appearance")
     theme = st.selectbox("Theme:", ["Dark", "Light"], index=0)
+    
     if theme == "Light":
         st.markdown("""
         <style>
-        .stApp { background-color: #ffffff !important; }
-        .stApp, .stApp * { color: #000000 !important; }
-        div[data-testid="stMetricValue"] { color: #000000 !important; font-weight: bold; font-size: 1.2rem !important; }
-        div[data-testid="stMetricLabel"] { color: #333333 !important; font-size: 0.8rem !important; white-space: normal !important; word-wrap: break-word !important; }
-        div[data-testid="stMetric"] { min-width: 120px !important; }
-        .stSidebar { background-color: #f0f2f6 !important; }
-        .stSidebar .stMarkdown, .stSidebar p, .stSidebar label { color: #000000 !important; }
-        header, .stApp header, [data-testid="stHeader"] { background-color: #ffffff !important; border-bottom: 1px solid #e0e0e0 !important; }
-        header button, .stApp header button, [data-testid="stHeader"] button,
-        [data-testid="baseButton-header"], button[data-testid="baseButton-header"],
-        button[kind="header"] {
-            background-color: transparent !important;
-            color: #333333 !important;
+        .stApp { background: linear-gradient(135deg, #f5f7fa 0%, #ffffff 100%) !important; }
+        .stApp, .stApp * { color: #1a1a2e !important; }
+        div[data-testid="stMetricValue"] { color: #1a1a2e !important; font-weight: 700 !important; font-size: 1.3rem !important; }
+        div[data-testid="stMetricLabel"] { color: #4a5568 !important; font-size: 0.8rem !important; }
+        div[data-testid="stMetric"] { background: linear-gradient(135deg, #ffffff 0%, #f8f9fa 100%) !important; border: 1px solid #e2e8f0 !important; box-shadow: 0 2px 8px rgba(0,0,0,0.04) !important; }
+        .stSidebar { background: linear-gradient(180deg, #f8f9fa 0%, #ffffff 100%) !important; border-right: 1px solid #e2e8f0 !important; }
+        .stTextInput input, .stNumberInput input, .stSelectbox select, .stDateInput input { background-color: #ffffff !important; color: #1a1a2e !important; border: 1px solid #cbd5e0 !important; }
+        .stTextInput input:focus, .stNumberInput input:focus { border-color: #89b4fa !important; box-shadow: 0 0 0 2px rgba(137,180,250,0.2) !important; }
+        .stButton button { background: linear-gradient(135deg, #e2e8f0 0%, #cbd5e0 100%) !important; color: #1a1a2e !important; border: none !important; }
+        .stButton button:hover { background: linear-gradient(135deg, #cbd5e0 0%, #a0aec0 100%) !important; transform: translateY(-2px); }
+        .stTabs [data-baseweb="tab-list"] { background-color: transparent !important; }
+        .stTabs [data-baseweb="tab"] { color: #4a5568 !important; background-color: transparent !important; }
+        .stTabs [aria-selected="true"] { color: #1a1a2e !important; border-bottom: 3px solid #89b4fa !important; }
+        .stExpander { background-color: #ffffff !important; border: 1px solid #e2e8f0 !important; border-radius: 12px !important; }
+        div[data-testid="stAlert"] { background-color: #f8f9fa !important; border-radius: 12px !important; }
+        button[kind="secondary"], .stButton button[data-testid="baseButton-secondary"] {
+            background: linear-gradient(135deg, #dc3545 0%, #c82333 100%) !important;
+            color: white !important;
             border: none !important;
         }
-        header button:hover, .stApp header button:hover, [data-testid="stHeader"] button:hover {
-            background-color: #f0f0f0 !important;
-            color: #000000 !important;
-            border-radius: 4px !important;
+        button[kind="secondary"]:hover {
+            background: linear-gradient(135deg, #c82333 0%, #a71d2a 100%) !important;
+            transform: scale(1.05) !important;
         }
-        header svg, .stApp header svg, [data-testid="stHeader"] svg {
-            fill: #333333 !important;
-            stroke: #333333 !important;
-        }
-        .stTextInput input, .stNumberInput input, .stSelectbox select {
-            background-color: #ffffff !important;
-            color: #000000 !important;
-            border: 1px solid #cccccc !important;
-        }
-        .stNumberInput button {
-            background-color: #f0f0f0 !important;
-            color: #000000 !important;
-            border: 1px solid #cccccc !important;
-        }
-        .stDateInput input {
-            background-color: #ffffff !important;
-            color: #000000 !important;
-        }
-        .stSelectbox div[data-baseweb="select"] div { color: #000000 !important; background-color: #ffffff !important; }
-        div[role="listbox"] div { color: #000000 !important; background-color: #ffffff !important; }
-        div[role="listbox"] div:hover { background-color: #e0e0e0 !important; }
-        .stMetric { background-color: #f8f9fa !important; border: 1px solid #e9ecef !important; border-radius: 10px; padding: 10px; }
-        .stTabs [data-baseweb="tab-list"] button { color: #000000 !important; font-size: 0.9rem !important; }
-        .stTabs [data-baseweb="tab-list"] button[aria-selected="true"] { background-color: #e0e0e0 !important; }
-        .stButton button {
-            background-color: #e9ecef !important;
-            color: #000000 !important;
-            border: 1px solid #cccccc !important;
-            border-radius: 4px !important;
-            padding: 0.25rem 0.5rem !important;
-            font-size: 0.8rem !important;
-            cursor: pointer !important;
-        }
-        .stButton button:hover { background-color: #dee2e6 !important; border-color: #adb5bd !important; }
-        button[kind="secondary"], .stButton button[data-testid="baseButton-secondary"] {
-            background-color: #f8f9fa !important;
-            color: #dc3545 !important;
-            border: 1px solid #dee2e6 !important;
-            font-weight: bold !important;
-            min-width: 32px !important;
-            width: 32px !important;
-            padding: 0 !important;
-            font-size: 14px !important;
-        }
-        button[kind="secondary"]:hover, .stButton button[data-testid="baseButton-secondary"]:hover {
-            background-color: #f5c6cb !important;
-            color: #721c24 !important;
-        }
-        .stExpander { background-color: #f8f9fa !important; border: 1px solid #e9ecef !important; }
-        .stDataFrame, .dataframe, table, th, td { color: #000000 !important; background-color: #ffffff !important; }
-        .stDataFrame th { background-color: #f0f0f0 !important; color: #000000 !important; }
-        .stTabs [data-baseweb="tab-list"] { background-color: #ffffff !important; }
-        .stTabs [data-baseweb="tab"] { background-color: #f8f9fa !important; color: #000000 !important; }
-        .stTabs [aria-selected="true"] { background-color: #e0e0e0 !important; color: #000000 !important; font-weight: bold !important; }
         </style>
         """, unsafe_allow_html=True)
     else:
         st.markdown("""
         <style>
-        .stApp { background-color: #1e1e2e !important; }
-        .stApp, .stApp * { color: #e0e0e0 !important; }
-        div[data-testid="stMetricValue"] { color: #a6e3a1 !important; font-weight: bold; font-size: 1.2rem !important; }
-        div[data-testid="stMetricLabel"] { color: #cdd6f4 !important; font-size: 0.8rem !important; white-space: normal !important; word-wrap: break-word !important; }
-        div[data-testid="stMetric"] { min-width: 120px !important; }
-        .stSidebar { background-color: #181825 !important; }
-        .stTextInput input, .stNumberInput input, .stSelectbox select {
-            background-color: #313244 !important;
-            color: #cdd6f4 !important;
-            border: 1px solid #45475a !important;
+        .stApp { background: linear-gradient(135deg, #1a1a2e 0%, #16213e 100%) !important; }
+        .stApp, .stApp * { color: #e2e8f0 !important; }
+        div[data-testid="stMetricValue"] { color: #a6e3a1 !important; font-weight: 700 !important; font-size: 1.3rem !important; }
+        div[data-testid="stMetricLabel"] { color: #94a3b8 !important; font-size: 0.8rem !important; }
+        div[data-testid="stMetric"] { background: linear-gradient(135deg, #1e293b 0%, #0f172a 100%) !important; border: 1px solid #334155 !important; box-shadow: 0 2px 8px rgba(0,0,0,0.2) !important; }
+        .stSidebar { background: linear-gradient(180deg, #0f172a 0%, #1e293b 100%) !important; border-right: 1px solid #334155 !important; }
+        .stTextInput input, .stNumberInput input, .stSelectbox select, .stDateInput input { background-color: #1e293b !important; color: #e2e8f0 !important; border: 1px solid #334155 !important; }
+        .stTextInput input:focus, .stNumberInput input:focus { border-color: #89b4fa !important; box-shadow: 0 0 0 2px rgba(137,180,250,0.2) !important; }
+        .stButton button { background: linear-gradient(135deg, #334155 0%, #1e293b 100%) !important; color: #e2e8f0 !important; border: none !important; }
+        .stButton button:hover { background: linear-gradient(135deg, #475569 0%, #334155 100%) !important; transform: translateY(-2px); }
+        .stTabs [data-baseweb="tab-list"] { background-color: transparent !important; }
+        .stTabs [data-baseweb="tab"] { color: #94a3b8 !important; background-color: transparent !important; }
+        .stTabs [aria-selected="true"] { color: #a6e3a1 !important; border-bottom: 3px solid #89b4fa !important; }
+        .stExpander { background-color: #1e293b !important; border: 1px solid #334155 !important; border-radius: 12px !important; }
+        div[data-testid="stAlert"] { background-color: #1e293b !important; border-radius: 12px !important; }
+        button[kind="secondary"], .stButton button[data-testid="baseButton-secondary"] {
+            background: linear-gradient(135deg, #dc3545 0%, #c82333 100%) !important;
+            color: white !important;
+            border: none !important;
         }
-        .stMetric { background-color: #313244 !important; border: 1px solid #45475a !important; border-radius: 10px; padding: 10px; }
-        .stTabs [data-baseweb="tab-list"] button { font-size: 0.9rem !important; }
+        button[kind="secondary"]:hover {
+            background: linear-gradient(135deg, #c82333 0%, #a71d2a 100%) !important;
+            transform: scale(1.05) !important;
+        }
         </style>
         """, unsafe_allow_html=True)
-
-# ============================================================
-# STICKY TABS CSS (ORIGINAL WORKING VERSION)
-# ============================================================
-st.markdown("""
-<style>
-.stTabs [data-baseweb="tab-list"],
-div[data-testid="stTabs"] div[data-baseweb="tab-list"],
-.stTabs > div > div > div > div[role="tablist"] {
-    position: sticky !important;
-    top: 0 !important;
-    z-index: 9999 !important;
-    background-color: inherit !important;
-    padding-top: 10px !important;
-    padding-bottom: 10px !important;
-    margin-bottom: 0 !important;
-}
-.stTabs [data-baseweb="tab-panel"] { padding-top: 20px !important; }
-.main .block-container { padding-top: 0rem !important; }
-[data-testid="stAppViewContainer"] .stTabs [data-baseweb="tab-list"],
-[data-testid="stAppViewContainer"] div[data-testid="stTabs"] div[data-baseweb="tab-list"] {
-    background-color: #ffffff !important;
-}
-@media (prefers-color-scheme: dark) {
-    [data-testid="stAppViewContainer"] .stTabs [data-baseweb="tab-list"],
-    [data-testid="stAppViewContainer"] div[data-testid="stTabs"] div[data-baseweb="tab-list"] {
-        background-color: #1e1e2e !important;
-    }
-}
-</style>
-""", unsafe_allow_html=True)
-
-risk_free_rate = get_risk_free_rate()
-
-with st.sidebar:
-    if request_count > 20:
-        st.warning(f"📊 API requests this minute: {request_count}")
-    if check_rate_limit():
-        st.error("⏳ Rate limited - using cached data")
+    
+    st.markdown("---")
     st.header("🔍 Input")
     ticker = st.text_input("Stock / Index Ticker:", "SPY", help="Type a ticker symbol (e.g., AAPL, MSFT, GME)").upper()
     st.caption("📝 Type a ticker symbol (e.g., AAPL, MSFT, GME)")
@@ -1297,6 +1465,32 @@ with st.sidebar:
     else:
         interval_seconds = 0
     st.caption(f"📅 Last update: {format_local_time()}")
+
+# ============================================================
+# STICKY TABS CSS (UPDATED FOR BETTER LOOKING TABS)
+# ============================================================
+st.markdown("""
+<style>
+.stTabs [data-baseweb="tab-list"],
+div[data-testid="stTabs"] div[data-baseweb="tab-list"],
+.stTabs > div > div > div > div[role="tablist"] {
+    position: sticky !important;
+    top: 0 !important;
+    z-index: 9999 !important;
+    background-color: transparent !important;
+    padding-top: 10px !important;
+    padding-bottom: 10px !important;
+    margin-bottom: 0 !important;
+    gap: 8px !important;
+}
+.stTabs [data-baseweb="tab-panel"] {
+    padding-top: 20px !important;
+}
+.main .block-container {
+    padding-top: 0rem !important;
+}
+</style>
+""", unsafe_allow_html=True)
 
 # ============================================================
 # MAIN APP TABS
@@ -1588,9 +1782,9 @@ with tab1:
             if chart_option == "Launch Full TradingView (Save Drawings)":
                 tv_link = tradingview_direct_link(ticker)
                 st.markdown(f"""
-                <div style="text-align: center; padding: 40px; background-color: #1e1e2e; border-radius: 10px; border: 1px solid #89b4fa;">
+                <div style="text-align: center; padding: 40px; background: linear-gradient(135deg, #1a1a2e 0%, #16213e 100%); border-radius: 12px; border: 1px solid #89b4fa;">
                     <h3>📈 Open TradingView for Full Analysis</h3>
-                    <a href="{tv_link}" target="_blank"><button style="background-color: #89b4fa; color: #1e1e2e; padding: 12px 30px; font-size: 16px; border: none; border-radius: 5px; cursor: pointer; font-weight: bold;">🚀 Launch TradingView for {ticker}</button></a>
+                    <a href="{tv_link}" target="_blank"><button style="background-color: #89b4fa; color: #1a1a2e; padding: 12px 30px; font-size: 16px; border: none; border-radius: 8px; cursor: pointer; font-weight: bold;">🚀 Launch TradingView for {ticker}</button></a>
                     <p style="font-size: 12px; margin-top: 20px;">Create a free TradingView account to save your drawings</p>
                 </div>
                 """, unsafe_allow_html=True)
@@ -1894,7 +2088,7 @@ with tab1:
                         action = "Wait for better opportunity or enter small position"
                         risk_level = "LOW"
                     st.markdown(f"""
-                    <div style="background-color: #1e1e2e; border-radius: 10px; padding: 20px; border-left: 5px solid {rec_color};">
+                    <div style="background: linear-gradient(135deg, #1e293b 0%, #0f172a 100%); border-radius: 12px; padding: 20px; border-left: 5px solid {rec_color};">
                         <h3 style="margin: 0; color: {rec_color};">{recommendation}</h3>
                         <p><strong>Reason:</strong> {rec_reason}</p>
                         <p><strong>Action:</strong> {action}</p>
@@ -2108,7 +2302,7 @@ with tab3:
                 badge = "🟢 LOW IMPORTANCE"
                 badge_color = "#a6e3a1"
             st.markdown(f"""
-            <div style="background-color: {bg_color}; border-radius: 8px; padding: 12px; margin-bottom: 10px; border-left: 4px solid {badge_color};">
+            <div style="background-color: {bg_color}; border-radius: 12px; padding: 12px; margin-bottom: 10px; border-left: 4px solid {badge_color};">
                 <p style="margin: 0; font-weight: bold;">
                     <a href="{link}" target="_blank" style="text-decoration: none; color: {link_color};">{title}</a>
                 </p>
