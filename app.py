@@ -1356,7 +1356,7 @@ def calculate_option_price(S, K, T, r, v, q, option_type):
     return price, delta, gamma, theta, vega
 
 # ============================================================
-# SIDEBAR WITH THEME (UPDATED WITH BEAUTIFUL COLORS)
+# SIDEBAR WITH THEME (UPDATED WITH PROPER LIGHT MODE FIXES)
 # ============================================================
 
 with st.sidebar:
@@ -1366,21 +1366,66 @@ with st.sidebar:
     if theme == "Light":
         st.markdown("""
         <style>
+        /* Main app background */
         .stApp { background: linear-gradient(135deg, #f5f7fa 0%, #ffffff 100%) !important; }
         .stApp, .stApp * { color: #1a1a2e !important; }
+        
+        /* Metric styling */
         div[data-testid="stMetricValue"] { color: #1a1a2e !important; font-weight: 700 !important; font-size: 1.3rem !important; }
         div[data-testid="stMetricLabel"] { color: #4a5568 !important; font-size: 0.8rem !important; }
         div[data-testid="stMetric"] { background: linear-gradient(135deg, #ffffff 0%, #f8f9fa 100%) !important; border: 1px solid #e2e8f0 !important; box-shadow: 0 2px 8px rgba(0,0,0,0.04) !important; }
+        
+        /* Sidebar styling */
         .stSidebar { background: linear-gradient(180deg, #f8f9fa 0%, #ffffff 100%) !important; border-right: 1px solid #e2e8f0 !important; }
-        .stTextInput input, .stNumberInput input, .stSelectbox select, .stDateInput input { background-color: #ffffff !important; color: #1a1a2e !important; border: 1px solid #cbd5e0 !important; }
-        .stTextInput input:focus, .stNumberInput input:focus { border-color: #89b4fa !important; box-shadow: 0 0 0 2px rgba(137,180,250,0.2) !important; }
-        .stButton button { background: linear-gradient(135deg, #e2e8f0 0%, #cbd5e0 100%) !important; color: #1a1a2e !important; border: none !important; }
-        .stButton button:hover { background: linear-gradient(135deg, #cbd5e0 0%, #a0aec0 100%) !important; transform: translateY(-2px); }
-        .stTabs [data-baseweb="tab-list"] { background-color: transparent !important; }
-        .stTabs [data-baseweb="tab"] { color: #4a5568 !important; background-color: transparent !important; }
-        .stTabs [aria-selected="true"] { color: #1a1a2e !important; border-bottom: 3px solid #89b4fa !important; }
-        .stExpander { background-color: #ffffff !important; border: 1px solid #e2e8f0 !important; border-radius: 12px !important; }
-        div[data-testid="stAlert"] { background-color: #f8f9fa !important; border-radius: 12px !important; }
+        .stSidebar .stMarkdown, .stSidebar p, .stSidebar label { color: #1a1a2e !important; }
+        
+        /* Input fields - WHITE BACKGROUND WITH BLACK TEXT */
+        .stTextInput input, .stNumberInput input, .stSelectbox select, .stDateInput input { 
+            background-color: #ffffff !important; 
+            color: #1a1a2e !important; 
+            border: 1px solid #cbd5e0 !important;
+        }
+        .stTextInput input:focus, .stNumberInput input:focus { 
+            border-color: #89b4fa !important; 
+            box-shadow: 0 0 0 2px rgba(137,180,250,0.2) !important; 
+        }
+        
+        /* Selectbox dropdown styling */
+        .stSelectbox div[data-baseweb="select"] div {
+            background-color: #ffffff !important;
+            color: #1a1a2e !important;
+        }
+        div[role="listbox"] div {
+            background-color: #ffffff !important;
+            color: #1a1a2e !important;
+        }
+        div[role="listbox"] div:hover {
+            background-color: #e2e8f0 !important;
+        }
+        
+        /* Number input buttons (plus/minus) */
+        .stNumberInput button {
+            background-color: #e2e8f0 !important;
+            color: #1a1a2e !important;
+            border: 1px solid #cbd5e0 !important;
+        }
+        .stNumberInput button:hover {
+            background-color: #cbd5e0 !important;
+            color: #1a1a2e !important;
+        }
+        
+        /* Button styling */
+        .stButton button { 
+            background: linear-gradient(135deg, #e2e8f0 0%, #cbd5e0 100%) !important; 
+            color: #1a1a2e !important; 
+            border: none !important; 
+        }
+        .stButton button:hover { 
+            background: linear-gradient(135deg, #cbd5e0 0%, #a0aec0 100%) !important; 
+            transform: translateY(-2px); 
+        }
+        
+        /* Remove button (watchlist) */
         button[kind="secondary"], .stButton button[data-testid="baseButton-secondary"] {
             background: linear-gradient(135deg, #dc3545 0%, #c82333 100%) !important;
             color: white !important;
@@ -1389,6 +1434,55 @@ with st.sidebar:
         button[kind="secondary"]:hover {
             background: linear-gradient(135deg, #c82333 0%, #a71d2a 100%) !important;
             transform: scale(1.05) !important;
+        }
+        
+        /* Tabs styling */
+        .stTabs [data-baseweb="tab-list"] { background-color: transparent !important; }
+        .stTabs [data-baseweb="tab"] { color: #4a5568 !important; background-color: transparent !important; }
+        .stTabs [aria-selected="true"] { color: #1a1a2e !important; border-bottom: 3px solid #89b4fa !important; }
+        
+        /* Expander styling */
+        .stExpander { background-color: #ffffff !important; border: 1px solid #e2e8f0 !important; border-radius: 12px !important; }
+        .streamlit-expanderHeader { color: #1a1a2e !important; background-color: #f8f9fa !important; border-radius: 12px !important; }
+        
+        /* Alert boxes */
+        div[data-testid="stAlert"] { background-color: #f8f9fa !important; border-radius: 12px !important; color: #1a1a2e !important; }
+        .stAlert p { color: #1a1a2e !important; }
+        
+        /* Radio buttons */
+        .stRadio label { color: #1a1a2e !important; }
+        
+        /* Checkbox */
+        .stCheckbox label { color: #1a1a2e !important; }
+        
+        /* Trade recommendation box - FIXED */
+        div[style*="background: linear-gradient(135deg, #1e293b 0%, #0f172a 100%)"] {
+            background: linear-gradient(135deg, #ffffff 0%, #f8f9fa 100%) !important;
+            border: 1px solid #e2e8f0 !important;
+            color: #1a1a2e !important;
+        }
+        div[style*="background: linear-gradient(135deg, #1e293b 0%, #0f172a 100%)"] h3,
+        div[style*="background: linear-gradient(135deg, #1e293b 0%, #0f172a 100%)"] p,
+        div[style*="background: linear-gradient(135deg, #1e293b 0%, #0f172a 100%)"] strong {
+            color: #1a1a2e !important;
+        }
+        
+        /* Dataframe */
+        .stDataFrame, .dataframe, table, th, td { color: #1a1a2e !important; background-color: #ffffff !important; }
+        .stDataFrame th { background-color: #f0f0f0 !important; color: #1a1a2e !important; }
+        
+        /* Position calculator inputs */
+        .stNumberInput label { color: #1a1a2e !important; }
+        
+        /* Select timeframe box */
+        .stSelectbox [data-baseweb="select"] {
+            background-color: #ffffff !important;
+        }
+        
+        /* All select boxes */
+        select {
+            background-color: #ffffff !important;
+            color: #1a1a2e !important;
         }
         </style>
         """, unsafe_allow_html=True)
@@ -1403,13 +1497,9 @@ with st.sidebar:
         .stSidebar { background: linear-gradient(180deg, #0f172a 0%, #1e293b 100%) !important; border-right: 1px solid #334155 !important; }
         .stTextInput input, .stNumberInput input, .stSelectbox select, .stDateInput input { background-color: #1e293b !important; color: #e2e8f0 !important; border: 1px solid #334155 !important; }
         .stTextInput input:focus, .stNumberInput input:focus { border-color: #89b4fa !important; box-shadow: 0 0 0 2px rgba(137,180,250,0.2) !important; }
+        .stNumberInput button { background-color: #334155 !important; color: #e2e8f0 !important; border: 1px solid #475569 !important; }
         .stButton button { background: linear-gradient(135deg, #334155 0%, #1e293b 100%) !important; color: #e2e8f0 !important; border: none !important; }
         .stButton button:hover { background: linear-gradient(135deg, #475569 0%, #334155 100%) !important; transform: translateY(-2px); }
-        .stTabs [data-baseweb="tab-list"] { background-color: transparent !important; }
-        .stTabs [data-baseweb="tab"] { color: #94a3b8 !important; background-color: transparent !important; }
-        .stTabs [aria-selected="true"] { color: #a6e3a1 !important; border-bottom: 3px solid #89b4fa !important; }
-        .stExpander { background-color: #1e293b !important; border: 1px solid #334155 !important; border-radius: 12px !important; }
-        div[data-testid="stAlert"] { background-color: #1e293b !important; border-radius: 12px !important; }
         button[kind="secondary"], .stButton button[data-testid="baseButton-secondary"] {
             background: linear-gradient(135deg, #dc3545 0%, #c82333 100%) !important;
             color: white !important;
@@ -1419,6 +1509,13 @@ with st.sidebar:
             background: linear-gradient(135deg, #c82333 0%, #a71d2a 100%) !important;
             transform: scale(1.05) !important;
         }
+        .stTabs [data-baseweb="tab-list"] { background-color: transparent !important; }
+        .stTabs [data-baseweb="tab"] { color: #94a3b8 !important; background-color: transparent !important; }
+        .stTabs [aria-selected="true"] { color: #a6e3a1 !important; border-bottom: 3px solid #89b4fa !important; }
+        .stExpander { background-color: #1e293b !important; border: 1px solid #334155 !important; border-radius: 12px !important; }
+        div[data-testid="stAlert"] { background-color: #1e293b !important; border-radius: 12px !important; }
+        .stSelectbox div[data-baseweb="select"] div { background-color: #1e293b !important; color: #e2e8f0 !important; }
+        div[role="listbox"] div { background-color: #1e293b !important; color: #e2e8f0 !important; }
         </style>
         """, unsafe_allow_html=True)
     
@@ -2087,14 +2184,24 @@ with tab1:
                         rec_reason = f"Option is fairly priced ({abs(diff_percent):.0f}% from theoretical)"
                         action = "Wait for better opportunity or enter small position"
                         risk_level = "LOW"
+                    
+                    # Use dynamic styling based on theme for the recommendation box
+                    if theme == "Light":
+                        rec_box_style = "background: linear-gradient(135deg, #ffffff 0%, #f8f9fa 100%); border-radius: 12px; padding: 20px; border-left: 5px solid " + rec_color + "; border: 1px solid #e2e8f0;"
+                        rec_text_color = "#1a1a2e"
+                    else:
+                        rec_box_style = "background: linear-gradient(135deg, #1e293b 0%, #0f172a 100%); border-radius: 12px; padding: 20px; border-left: 5px solid " + rec_color + ";"
+                        rec_text_color = "#e2e8f0"
+                    
                     st.markdown(f"""
-                    <div style="background: linear-gradient(135deg, #1e293b 0%, #0f172a 100%); border-radius: 12px; padding: 20px; border-left: 5px solid {rec_color};">
+                    <div style="{rec_box_style}">
                         <h3 style="margin: 0; color: {rec_color};">{recommendation}</h3>
-                        <p><strong>Reason:</strong> {rec_reason}</p>
-                        <p><strong>Action:</strong> {action}</p>
-                        <p><strong>Risk Level:</strong> {risk_level}</p>
+                        <p style="color: {rec_text_color};"><strong>Reason:</strong> {rec_reason}</p>
+                        <p style="color: {rec_text_color};"><strong>Action:</strong> {action}</p>
+                        <p style="color: {rec_text_color};"><strong>Risk Level:</strong> {risk_level}</p>
                     </div>
                     """, unsafe_allow_html=True)
+                    
                     st.markdown("---")
                     st.subheader("📈 Trade Analysis")
                     col1, col2, col3 = st.columns(3)
