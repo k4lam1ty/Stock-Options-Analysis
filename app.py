@@ -2580,8 +2580,3 @@ if auto_refresh and interval_seconds > 0:
     time.sleep(interval_seconds)
     st.rerun()
     
-with st.sidebar:
-    st.markdown("---")
-    if st.button("🔄 Clear Cache & Retry"):
-        st.cache_data.clear()
-        st.rerun()
