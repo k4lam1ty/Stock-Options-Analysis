@@ -1567,6 +1567,15 @@ with st.sidebar:
         st.caption(f"⚠️ Frequent refreshes may cause rate limits")
     else:
         interval_seconds = 0
+
+         # ADD THIS CLEAR CACHE BUTTON RIGHT HERE
+    st.markdown("---")
+    if st.button("🔄 Clear Cache & Retry", use_container_width=True):
+        st.cache_data.clear()
+        st.success("Cache cleared! Page will reload...")
+        time.sleep(1)
+        st.rerun()
+        
     st.caption(f"📅 Last update: {format_local_time()}")
 
 # ============================================================
