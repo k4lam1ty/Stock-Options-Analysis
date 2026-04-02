@@ -1242,58 +1242,54 @@ def is_index(ticker):
     return ticker.upper() in [x.upper() for x in index_tickers]
 
 def get_stock_data(ticker):
-    """Fetch all data for a ticker with proper error handling"""
-    # Wait if we're making too many requests
+    """Fetch all data for a ticker - works with either API provider"""
+    
     request_queue.wait_if_needed()
     
     try:
-        stock = yf.Ticker(ticker)
+        # Get ticker data from selected provider
+        ticker_data = get_ticker_data(ticker)
         
-        # Try multiple methods to get price
-        info = stock.info
-        price = None
+        # Get current price
+        current_price = get_current_price(ticker_data)
         
-        # Method 1: Current price
-        price = info.get('regularMarketPrice', None)
-        if not price or price <= 0:
-            price = info.get('currentPrice', None)
+        # Get historical data (similar for both APIs)
+        hist = ticker_data.history(period='1y')
         
-        # Method 2: Previous close
-        if not price or price <= 0:
-            price = info.get('previousClose', None)
+        # Get company info
+        company_name = get_company_name(ticker_data)
         
-        # Method 3: From history
-        if not price or price <= 0:
-            hist_temp = stock.history(period='2d')
-            if not hist_temp.empty:
-                price = hist_temp['Close'].iloc[-1]
+        # For financials, defeatbeta-api may have limitations
+        # You may need to keep yfinance for balance sheet data
+        is_index_ticker = ticker.upper() in ['SPY', 'QQQ', 'DIA', 'IWM', 'VIX', 'VOO', 'IVV', 'TLT', 'AGG', 'BND', 'GLD', 'SLV']
         
-        # Get history
-        hist = stock.history(period='1y')
-        
-        # Get financials (only for stocks, not indices)
-        index_tickers = ['SPY', 'QQQ', 'DIA', 'IWM', 'VIX', 'VOO', 'IVV', 'TLT', 'AGG', 'BND', 'GLD', 'SLV']
-        is_index_ticker = ticker.upper() in [x.upper() for x in index_tickers]
-        
-        if not is_index_ticker:
-            balance_sheet = get_cached_balance_sheet(ticker)
-            income_statement = get_cached_financials(ticker)
-            cashflow = get_cached_cashflow(ticker)
+        if DATA_PROVIDER == "YFINANCE" or not is_index_ticker:
+            # Only yfinance provides detailed financials currently
+            if DATA_PROVIDER == "YFINANCE":
+                balance_sheet = get_cached_balance_sheet(ticker)
+                income_statement = get_cached_financials(ticker)
+                cashflow = get_cached_cashflow(ticker)
+            else:
+                # defeatbeta-api may not have financials yet
+                balance_sheet = pd.DataFrame()
+                income_statement = pd.DataFrame()
+                cashflow = pd.DataFrame()
         else:
             balance_sheet = pd.DataFrame()
             income_statement = pd.DataFrame()
             cashflow = pd.DataFrame()
         
         return {
-            'info': info,
+            'info': {'longName': company_name},  # Simplified info dict
             'hist': hist,
-            'price': price,
+            'price': current_price,
             'balance_sheet': balance_sheet,
             'income_statement': income_statement,
             'cashflow': cashflow,
             'is_index': is_index_ticker,
-            'success': price is not None and price > 0
+            'success': current_price is not None and current_price > 0
         }
+        
     except Exception as e:
         return {
             'info': {},
