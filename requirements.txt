@@ -8,4 +8,3 @@ feedparser
 beautifulsoup4
 requests
 pytz
-pip install redis
