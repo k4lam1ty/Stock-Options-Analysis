@@ -47,46 +47,6 @@ class RequestQueue:
 request_queue = RequestQueue(max_requests_per_second=2)
 
 # ============================================================
-# SHARED CACHE FOR MULTIPLE USERS (REDIS)
-# ============================================================
-
-import pickle
-import redis
-import os
-
-# Try to connect to Redis (for production)
-try:
-    redis_url = os.environ.get('REDIS_URL', None)
-    if redis_url:
-        redis_client = redis.from_url(redis_url)
-        REDIS_AVAILABLE = True
-    else:
-        REDIS_AVAILABLE = False
-        redis_client = None
-except:
-    REDIS_AVAILABLE = False
-    redis_client = None
-
-def get_cached_data(key, ttl=3600):
-    """Get data from Redis cache if available"""
-    if REDIS_AVAILABLE and redis_client:
-        try:
-            data = redis_client.get(key)
-            if data:
-                return pickle.loads(data)
-        except:
-            pass
-    return None
-
-def set_cached_data(key, data, ttl=3600):
-    """Store data in Redis cache"""
-    if REDIS_AVAILABLE and redis_client:
-        try:
-            redis_client.setex(key, ttl, pickle.dumps(data))
-        except:
-            pass
-
-# ============================================================
 # SET USER-AGENT TO AVOID BLOCKING
 # ============================================================
 
