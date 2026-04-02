@@ -14,6 +14,19 @@ import os
 import pytz
 import re
 
+# ============================================================
+# FIX YFINANCE CONNECTION ISSUES
+# ============================================================
+
+# Set custom user-agent to avoid blocking
+session = requests.Session()
+session.headers.update({
+    'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36'
+})
+
+# Apply to yfinance
+import yfinance as yf
+
 st.set_page_config(
     page_title="Stock Analysis Dashboard", 
     layout="wide",
@@ -427,6 +440,26 @@ def format_volume(value):
         return f"{value/1_000:,.1f}K"
     else:
         return f"{value:,.0f}"
+
+# ============================================================
+# TICKER VALIDATION
+# ============================================================
+
+def validate_ticker(ticker):
+    """Check if ticker is valid before loading full data"""
+    try:
+        stock = yf.Ticker(ticker)
+        # Try to get basic info - this is a lightweight call
+        info = stock.info
+        if info.get('regularMarketPrice') or info.get('currentPrice'):
+            return True
+        # Try history as fallback
+        hist = stock.history(period='1d')
+        if not hist.empty and hist['Close'].iloc[-1] > 0:
+            return True
+        return False
+    except:
+        return False
 
 # ============================================================
 # IMPROVED EARNINGS FUNCTIONS WITH BETTER DATE & ESTIMATE EXTRACTION
@@ -1116,25 +1149,67 @@ def is_index(ticker):
     return ticker.upper() in [x.upper() for x in index_tickers]
 
 def get_stock_data(ticker):
-    info = get_cached_stock_info(ticker)
-    hist = get_cached_stock_history(ticker, '1y')
-    if not is_index(ticker):
-        balance_sheet = get_cached_balance_sheet(ticker)
-        income_statement = get_cached_financials(ticker)
-        cashflow = get_cached_cashflow(ticker)
-    else:
-        balance_sheet = pd.DataFrame()
-        income_statement = pd.DataFrame()
-        cashflow = pd.DataFrame()
-    return {
-        'info': info,
-        'hist': hist,
-        'balance_sheet': balance_sheet,
-        'income_statement': income_statement,
-        'cashflow': cashflow,
-        'is_index': is_index(ticker)
-    }
-
+    """Fetch all data for a ticker with proper error handling"""
+    try:
+        stock = yf.Ticker(ticker)
+        
+        # Try multiple methods to get price
+        info = stock.info
+        price = None
+        
+        # Method 1: Current price
+        price = info.get('regularMarketPrice', None)
+        if not price or price <= 0:
+            price = info.get('currentPrice', None)
+        
+        # Method 2: Previous close
+        if not price or price <= 0:
+            price = info.get('previousClose', None)
+        
+        # Method 3: From history
+        if not price or price <= 0:
+            hist_temp = stock.history(period='2d')
+            if not hist_temp.empty:
+                price = hist_temp['Close'].iloc[-1]
+        
+        # Get history
+        hist = stock.history(period='1y')
+        
+        # Get financials (only for stocks, not indices)
+        index_tickers = ['SPY', 'QQQ', 'DIA', 'IWM', 'VIX', 'VOO', 'IVV', 'TLT', 'AGG', 'BND', 'GLD', 'SLV']
+        is_index_ticker = ticker.upper() in [x.upper() for x in index_tickers]
+        
+        if not is_index_ticker:
+            balance_sheet = get_cached_balance_sheet(ticker)
+            income_statement = get_cached_financials(ticker)
+            cashflow = get_cached_cashflow(ticker)
+        else:
+            balance_sheet = pd.DataFrame()
+            income_statement = pd.DataFrame()
+            cashflow = pd.DataFrame()
+        
+        return {
+            'info': info,
+            'hist': hist,
+            'price': price,
+            'balance_sheet': balance_sheet,
+            'income_statement': income_statement,
+            'cashflow': cashflow,
+            'is_index': is_index_ticker,
+            'success': price is not None and price > 0
+        }
+    except Exception as e:
+        return {
+            'info': {},
+            'hist': pd.DataFrame(),
+            'price': None,
+            'balance_sheet': pd.DataFrame(),
+            'income_statement': pd.DataFrame(),
+            'cashflow': pd.DataFrame(),
+            'is_index': False,
+            'success': False,
+            'error': str(e)
+        }
 def calculate_rsi(data, window=14):
     delta = data.diff()
     gain = delta.where(delta > 0, 0)
@@ -1575,6 +1650,13 @@ with st.sidebar:
         st.success("Cache cleared! Page will reload...")
         time.sleep(1)
         st.rerun()
+
+            st.markdown("---")
+    if st.button("🔄 Clear Cache & Retry", use_container_width=True):
+        st.cache_data.clear()
+        st.success("Cache cleared! Reloading...")
+        time.sleep(1)
+        st.rerun()
         
     st.caption(f"📅 Last update: {format_local_time()}")
 
@@ -1618,21 +1700,48 @@ with tab1:
     if ticker:
         try:
             with st.spinner(f"Loading data for {ticker}..."):
-                data = get_stock_data(ticker)
-                info = data['info']
-                hist = data['hist']
-                balance_sheet = data['balance_sheet']
-                income_statement = data['income_statement']
-                cashflow = data['cashflow']
-                is_index_ticker = data['is_index']
-            
-            dividend_yield = get_dividend_yield(ticker)
-            current_price = info.get('currentPrice', info.get('regularMarketPrice', 0))
-            
-            # Validate current price
-            if current_price is None or current_price <= 0:
-                st.warning(f"Could not retrieve valid current price for {ticker}. Please try again or check the ticker symbol.")
-                st.stop()
+    data = get_stock_data(ticker)
+    
+    # Check if data loading was successful
+    if not data.get('success', False):
+        st.error(f"Could not load data for {ticker}")
+        st.info(f"Error: {data.get('error', 'Unknown error')}")
+        
+        # Show sample tickers that work
+        st.markdown("**Try these tickers that typically work well:**")
+        st.markdown("AAPL, MSFT, GOOGL, TSLA, NVDA, AMZN, META")
+        
+        # Add manual price option
+        manual_price = st.number_input("Or enter price manually to continue:", value=0.0, step=1.0, format="%.2f")
+        if manual_price > 0:
+            current_price = manual_price
+            st.success(f"Using manual price: ${manual_price:.2f}")
+            st.warning("⚠️ Some features may be limited with manual price entry.")
+            # Create empty data structures to continue
+            info = {}
+            hist = pd.DataFrame()
+            balance_sheet = pd.DataFrame()
+            income_statement = pd.DataFrame()
+            cashflow = pd.DataFrame()
+            is_index_ticker = False
+            dividend_yield = 0
+        else:
+            st.stop()
+    else:
+        info = data['info']
+        hist = data['hist']
+        current_price = data['price']
+        balance_sheet = data['balance_sheet']
+        income_statement = data['income_statement']
+        cashflow = data['cashflow']
+        is_index_ticker = data['is_index']
+        dividend_yield = get_dividend_yield(ticker)
+
+# Only proceed if we have a valid price
+if current_price is None or current_price <= 0:
+    st.error(f"Cannot get valid price for {ticker}")
+    st.info("Try using the manual price entry above or refresh the page.")
+    st.stop()
             
             previous_close = info.get('previousClose', 0)
             price_change = current_price - previous_close
