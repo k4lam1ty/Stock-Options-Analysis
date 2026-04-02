@@ -15,6 +15,78 @@ import pytz
 import re
 
 # ============================================================
+# REQUEST QUEUE FOR RATE LIMITING
+# ============================================================
+
+import threading
+from collections import deque
+import time
+
+class RequestQueue:
+    """Simple request queue to prevent too many simultaneous requests"""
+    def __init__(self, max_requests_per_second=2):
+        self.max_requests_per_second = max_requests_per_second
+        self.request_times = deque()
+        self.lock = threading.Lock()
+    
+    def wait_if_needed(self):
+        with self.lock:
+            now = time.time()
+            # Remove requests older than 1 second
+            while self.request_times and self.request_times[0] < now - 1:
+                self.request_times.popleft()
+            
+            if len(self.request_times) >= self.max_requests_per_second:
+                wait_time = 1 - (now - self.request_times[0])
+                if wait_time > 0:
+                    time.sleep(wait_time)
+            
+            self.request_times.append(time.time())
+
+# Create a global request queue
+request_queue = RequestQueue(max_requests_per_second=2)
+
+# ============================================================
+# SHARED CACHE FOR MULTIPLE USERS (REDIS)
+# ============================================================
+
+import pickle
+import redis
+import os
+
+# Try to connect to Redis (for production)
+try:
+    redis_url = os.environ.get('REDIS_URL', None)
+    if redis_url:
+        redis_client = redis.from_url(redis_url)
+        REDIS_AVAILABLE = True
+    else:
+        REDIS_AVAILABLE = False
+        redis_client = None
+except:
+    REDIS_AVAILABLE = False
+    redis_client = None
+
+def get_cached_data(key, ttl=3600):
+    """Get data from Redis cache if available"""
+    if REDIS_AVAILABLE and redis_client:
+        try:
+            data = redis_client.get(key)
+            if data:
+                return pickle.loads(data)
+        except:
+            pass
+    return None
+
+def set_cached_data(key, data, ttl=3600):
+    """Store data in Redis cache"""
+    if REDIS_AVAILABLE and redis_client:
+        try:
+            redis_client.setex(key, ttl, pickle.dumps(data))
+        except:
+            pass
+
+# ============================================================
 # SET USER-AGENT TO AVOID BLOCKING
 # ============================================================
 
@@ -45,16 +117,14 @@ import random
 from functools import wraps
 
 def rate_limit_handler(func):
-    """Decorator to handle rate limits with exponential backoff"""
     @wraps(func)
     def wrapper(*args, **kwargs):
-        max_retries = 5
-        base_delay = 2
+        max_retries = 3  # Reduce from 5 to 3
+        base_delay = 1   # Reduce from 2 to 1
         
         for attempt in range(max_retries):
             try:
-                # Add random jitter to avoid synchronized requests
-                time.sleep(random.uniform(0.3, 0.8))
+                # Remove the delay here - only delay on retry
                 return func(*args, **kwargs)
             except Exception as e:
                 error_msg = str(e).lower()
@@ -80,11 +150,11 @@ class RateLimitedTicker(yf.Ticker):
     
     @property
     def info(self):
-        time.sleep(random.uniform(0.3, 0.7))
+        # No delay - caching handles rate limiting
         return super().info
     
     def history(self, *args, **kwargs):
-        time.sleep(random.uniform(0.3, 0.7))
+        # No delay - caching handles rate limiting
         return super().history(*args, **kwargs)
 
 # Monkey patch yfinance
@@ -380,7 +450,7 @@ def track_request():
 # CACHING DECORATORS
 # ============================================================
 
-@st.cache_data(ttl=900, show_spinner=False)
+@st.cache_data(ttl=300, show_spinner=False)
 def get_cached_stock_info(ticker):
     try:
         stock = yf.Ticker(ticker)
@@ -388,7 +458,7 @@ def get_cached_stock_info(ticker):
     except:
         return {}
 
-@st.cache_data(ttl=900, show_spinner=False)
+@st.cache_data(ttl=300, show_spinner=False)
 def get_cached_stock_history(ticker, period='1y'):
     try:
         stock = yf.Ticker(ticker)
@@ -396,7 +466,7 @@ def get_cached_stock_history(ticker, period='1y'):
     except:
         return pd.DataFrame()
 
-@st.cache_data(ttl=900, show_spinner=False)
+@st.cache_data(ttl=300, show_spinner=False)
 def get_cached_balance_sheet(ticker):
     try:
         stock = yf.Ticker(ticker)
@@ -404,7 +474,7 @@ def get_cached_balance_sheet(ticker):
     except:
         return pd.DataFrame()
 
-@st.cache_data(ttl=900, show_spinner=False)
+@st.cache_data(ttl=300, show_spinner=False)
 def get_cached_financials(ticker):
     try:
         stock = yf.Ticker(ticker)
@@ -412,7 +482,7 @@ def get_cached_financials(ticker):
     except:
         return pd.DataFrame()
 
-@st.cache_data(ttl=900, show_spinner=False)
+@st.cache_data(ttl=300, show_spinner=False)
 def get_cached_cashflow(ticker):
     try:
         stock = yf.Ticker(ticker)
@@ -428,7 +498,7 @@ def get_cached_options(ticker):
     except:
         return []
 
-@st.cache_data(ttl=900, show_spinner=False)
+@st.cache_data(ttl=300, show_spinner=False)
 def get_cached_option_chain(ticker, expiration):
     try:
         stock = yf.Ticker(ticker)
@@ -1213,6 +1283,9 @@ def is_index(ticker):
 
 def get_stock_data(ticker):
     """Fetch all data for a ticker with proper error handling"""
+    # Wait if we're making too many requests
+    request_queue.wait_if_needed()
+    
     try:
         stock = yf.Ticker(ticker)
         
@@ -1304,6 +1377,28 @@ def get_price_from_fallback(ticker):
         return common_prices[ticker.upper()]
     
     return None
+
+    # ============================================================
+# BATCH REQUESTS FOR MULTIPLE TICKERS
+# ============================================================
+
+@st.cache_data(ttl=300, show_spinner=False)
+def get_multiple_stocks_data(tickers):
+    """Fetch multiple tickers in one go to reduce API calls"""
+    results = {}
+    for ticker in tickers:
+        try:
+            stock = yf.Ticker(ticker)
+            info = stock.info
+            results[ticker] = {
+                'price': info.get('regularMarketPrice', info.get('currentPrice', 0)),
+                'change': info.get('regularMarketChangePercent', 0),
+                'name': info.get('longName', ticker)
+            }
+        except:
+            results[ticker] = None
+    return results
+    
 def calculate_rsi(data, window=14):
     delta = data.diff()
     gain = delta.where(delta > 0, 0)
