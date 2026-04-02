@@ -1713,100 +1713,101 @@ with tab1:
                 
                 # Add manual price option
                 manual_price = st.number_input("Or enter price manually to continue:", value=0.0, step=1.0, format="%.2f")
-        if manual_price > 0:
-            current_price = manual_price
-            st.success(f"Using manual price: ${manual_price:.2f}")
-            st.warning("⚠️ Some features may be limited with manual price entry.")
-            # Create empty data structures to continue
-            info = {}
-            hist = pd.DataFrame()
-            balance_sheet = pd.DataFrame()
-            income_statement = pd.DataFrame()
-            cashflow = pd.DataFrame()
-            is_index_ticker = False
-            dividend_yield = 0
-        else:
-            st.stop()
-    else:
-        info = data['info']
-        hist = data['hist']
-        current_price = data['price']
-        balance_sheet = data['balance_sheet']
-        income_statement = data['income_statement']
-        cashflow = data['cashflow']
-        is_index_ticker = data['is_index']
-        dividend_yield = get_dividend_yield(ticker)
-
-# Only proceed if we have a valid price
-if current_price is None or current_price <= 0:
-    st.error(f"Cannot get valid price for {ticker}")
-    st.info("Try using the manual price entry above or refresh the page.")
-    st.stop()
-            
-            previous_close = info.get('previousClose', 0)
-            price_change = current_price - previous_close
-            price_change_pct = (price_change / previous_close * 100) if previous_close else 0
-            
-            hist_6mo = hist.tail(130)
-            if len(hist_6mo) > 1:
-                six_month_return = ((hist_6mo['Close'].iloc[-1] - hist_6mo['Close'].iloc[0]) / hist_6mo['Close'].iloc[0]) * 100
+                
+                if manual_price > 0:
+                    current_price = manual_price
+                    st.success(f"Using manual price: ${manual_price:.2f}")
+                    st.warning("⚠️ Some features may be limited with manual price entry.")
+                    # Create empty data structures to continue
+                    info = {}
+                    hist = pd.DataFrame()
+                    balance_sheet = pd.DataFrame()
+                    income_statement = pd.DataFrame()
+                    cashflow = pd.DataFrame()
+                    is_index_ticker = False
+                    dividend_yield = 0
+                    previous_close = 0
+                    price_change = 0
+                    price_change_pct = 0
+                    six_month_return = 0
+                    volatility = 30
+                    vol_to_use = 0.3
+                    vol_source_text = "Manual Price Entry - Volatility estimated at 30%"
+                    current_rsi = 50
+                    asset_type = "Stock"
+                else:
+                    st.stop()
             else:
-                six_month_return = 0
-            
-            # Improved volatility messaging
-            if volatility_source == "Historical Volatility (from price data)":
+                info = data['info']
+                hist = data['hist']
+                current_price = data['price']
+                balance_sheet = data['balance_sheet']
+                income_statement = data['income_statement']
+                cashflow = data['cashflow']
+                is_index_ticker = data['is_index']
+                dividend_yield = get_dividend_yield(ticker)
+                
+                # Calculate additional metrics
+                previous_close = info.get('previousClose', current_price)
+                price_change = current_price - previous_close
+                price_change_pct = (price_change / previous_close * 100) if previous_close else 0
+                
+                hist_6mo = hist.tail(130)
+                if len(hist_6mo) > 1:
+                    six_month_return = ((hist_6mo['Close'].iloc[-1] - hist_6mo['Close'].iloc[0]) / hist_6mo['Close'].iloc[0]) * 100
+                else:
+                    six_month_return = 0
+                
+                # Calculate historical volatility
                 if len(hist) > 20:
                     daily_returns = hist['Close'].pct_change().dropna()
                     volatility = daily_returns.std() * (252 ** 0.5) * 100
                 else:
                     volatility = 30
                 vol_to_use = volatility / 100
-                vol_source_text = f"📊 Historical Volatility: {volatility:.1f}% (calculated from {len(hist)} days of price data)"
-            else:
-                implied_vol = get_implied_volatility(ticker, current_price, option_type)
-                if implied_vol and implied_vol > 0:
-                    volatility = implied_vol
+                
+                # Check for manual volatility override (from sidebar)
+                if manual_vol and manual_vol_value is not None:
+                    volatility = manual_vol_value
                     vol_to_use = volatility / 100
-                    vol_source_text = f"📈 Implied Volatility: {volatility:.1f}% (from option chain)"
+                    vol_source_text = f"🔧 Manual Volatility: {volatility:.1f}%"
                 else:
-                    if len(hist) > 20:
-                        daily_returns = hist['Close'].pct_change().dropna()
-                        volatility = daily_returns.std() * (252 ** 0.5) * 100
-                    else:
-                        volatility = 30
-                    vol_to_use = volatility / 100
-                    vol_source_text = f"⚠️ Implied Volatility not available for {ticker} - using Historical Volatility: {volatility:.1f}%"
+                    vol_source_text = f"📊 Historical Volatility: {volatility:.1f}% (calculated from {len(hist)} days)"
+                
+                # Calculate RSI
+                rsi = calculate_rsi(hist['Close'])
+                current_rsi = rsi.iloc[-1] if not rsi.empty else 50
+                asset_type = "Index/ETF" if is_index_ticker else "Stock"
             
-            manual_vol = st.sidebar.checkbox("Manually override volatility", value=False)
-            if manual_vol:
-                volatility = st.sidebar.number_input("Manual Volatility (%):", value=volatility, step=1.0)
-                vol_to_use = volatility / 100
-                vol_source_text = f"🔧 Manual Volatility: {volatility:.1f}% (user override)"
+            # Only proceed if we have a valid price
+            if current_price is None or current_price <= 0:
+                st.error(f"Cannot get valid price for {ticker}")
+                st.info("Try using the manual price entry above or refresh the page.")
+                st.stop()
             
-            rsi = calculate_rsi(hist['Close'])
-            current_rsi = rsi.iloc[-1] if not rsi.empty else 50
-            asset_type = "Index/ETF" if is_index_ticker else "Stock"
+            # Display header
+            st.subheader(f"📊 {ticker} - {info.get('longName', ticker) if info else ticker} ({asset_type})")
             
-            st.subheader(f"📊 {ticker} - {info.get('longName', ticker)} ({asset_type})")
-            
+            # Price metrics row
             col1, col2, col3, col4, col5, col6 = st.columns(6)
             with col1:
                 st.metric("Current Price", format_currency(current_price), delta=f"{price_change:+.2f} ({price_change_pct:+.1f}%)")
             with col2:
-                st.metric("Day High", format_currency(info.get('dayHigh', 0)))
+                st.metric("Day High", format_currency(info.get('dayHigh', 0) if info else 0))
             with col3:
-                st.metric("Day Low", format_currency(info.get('dayLow', 0)))
+                st.metric("Day Low", format_currency(info.get('dayLow', 0) if info else 0))
             with col4:
-                st.metric("52-Week High", format_currency(info.get('fiftyTwoWeekHigh', 0)))
+                st.metric("52-Week High", format_currency(info.get('fiftyTwoWeekHigh', 0) if info else 0))
             with col5:
-                st.metric("52-Week Low", format_currency(info.get('fiftyTwoWeekLow', 0)))
+                st.metric("52-Week Low", format_currency(info.get('fiftyTwoWeekLow', 0) if info else 0))
             with col6:
-                st.metric("Volume", format_volume(info.get('volume', 0)))
+                st.metric("Volume", format_volume(info.get('volume', 0) if info else 0))
             st.markdown("---")
             
+            # Key metrics row
             col1, col2, col3, col4, col5 = st.columns(5)
             with col1:
-                pe = info.get('trailingPE', 0)
+                pe = info.get('trailingPE', 0) if info else 0
                 st.metric("P/E Ratio", f"{pe:,.2f}" if pe else "N/A")
             with col2:
                 st.metric("6-Month Return", f"{six_month_return:+.1f}%")
@@ -1821,6 +1822,7 @@ if current_price is None or current_price <= 0:
                     st.metric("Dividend Yield", "N/A")
             st.markdown("---")
             
+            # Status row
             col1, col2, col3 = st.columns(3)
             with col1:
                 st.metric("Risk-Free Rate", f"{risk_free_rate*100:.2f}%")
@@ -1830,7 +1832,7 @@ if current_price is None or current_price <= 0:
                 st.metric("Auto-Refresh", "OFF" if not auto_refresh else f"{interval_seconds}s")
             st.markdown("---")
             
-            # EARNINGS CALENDAR - ENHANCED VERSION WITH DEBUG OPTION
+            # EARNINGS CALENDAR (only for stocks, not indices)
             if not is_index_ticker:
                 st.subheader("📅 Earnings Calendar & Estimates")
                 
@@ -1839,7 +1841,6 @@ if current_price is None or current_price <= 0:
                 
                 # Use enhanced earnings info
                 if debug_mode:
-                    # Show debug info in expander
                     with st.expander("🔍 Debug Information", expanded=True):
                         earnings_info = get_earnings_with_details(ticker, debug=True)
                         st.write("**Earnings Data Sources:**")
@@ -1874,7 +1875,6 @@ if current_price is None or current_price <= 0:
                         next_earnings_date = pd.to_datetime(next_earnings).date()
                         days_until = (next_earnings_date - date.today()).days
                         
-                        # Show earnings time if available
                         if earnings_time:
                             st.metric("Date & Time", f"{next_earnings_date.strftime('%b %d, %Y')} at {earnings_time}")
                             st.caption(f"🕐 {earnings_time}")
@@ -1883,7 +1883,6 @@ if current_price is None or current_price <= 0:
                         
                         st.caption(f"📅 {days_until} days from today")
                         
-                        # Show source and confirmation
                         if earnings_confirmed:
                             st.success("✅ Confirmed date")
                         else:
@@ -1901,7 +1900,6 @@ if current_price is None or current_price <= 0:
                         st.caption("Try checking the company's investor relations page")
                         st.caption("Or enter a manual date below")
                         
-                        # Manual date entry
                         manual_date = st.date_input("Manual Earnings Date", value=None, key="manual_earnings_date")
                         if manual_date:
                             next_earnings_date = manual_date
@@ -1923,16 +1921,13 @@ if current_price is None or current_price <= 0:
                     else:
                         st.write("Revenue Estimate: Not available")
                     
-                    # Add manual entry option
                     with st.expander("✏️ Enter Manual Estimates"):
                         manual_eps = st.number_input("Manual EPS Estimate ($)", value=0.0, step=0.01, key="manual_eps", format="%.2f")
                         manual_rev_m = st.number_input("Manual Revenue Estimate ($M)", value=0.0, step=1.0, key="manual_rev", format="%.2f")
                         if manual_eps > 0:
                             st.success(f"Using manual EPS: ${manual_eps:.2f}")
-                            earnings_eps_est = manual_eps
                         if manual_rev_m > 0:
                             st.success(f"Using manual Revenue: ${manual_rev_m:.2f}M")
-                            earnings_rev_est = manual_rev_m * 1_000_000
                 
                 with col3:
                     st.markdown("**📈 Recent Earnings**")
@@ -1958,6 +1953,8 @@ if current_price is None or current_price <= 0:
                         st.caption("This may be a newer stock or data not yet available")
                 
                 st.markdown("---")
+                
+                # Earnings surprise trend chart
                 if earnings_history and len([e for e in earnings_history if e.get('surprise_pct') is not None]) >= 2:
                     st.subheader("📊 Earnings Surprise Trend")
                     surprise_data = []
@@ -1975,6 +1972,7 @@ if current_price is None or current_price <= 0:
             st.subheader("🚀 Potential Catalysts")
             with st.spinner("Analyzing potential catalysts..."):
                 bull_catalysts, bear_catalysts = detect_catalysts(ticker, info)
+            
             col1, col2 = st.columns(2)
             with col1:
                 st.markdown("### 🟢 Bull Catalysts")
@@ -2009,6 +2007,7 @@ if current_price is None or current_price <= 0:
             st.subheader("📉 TradingView Chart")
             chart_option = st.radio("Choose Chart Mode:", ["Embedded Chart (View Only)", "Launch Full TradingView (Save Drawings)"], horizontal=True)
             chart_theme = "dark" if theme == "Dark" else "light"
+            
             if chart_option == "Launch Full TradingView (Save Drawings)":
                 tv_link = tradingview_direct_link(ticker)
                 st.markdown(f"""
@@ -2029,30 +2028,32 @@ if current_price is None or current_price <= 0:
             col1, col2 = st.columns(2)
             with col1:
                 st.subheader("🏢 Asset Information")
-                st.write(f"**Name:** {info.get('longName', 'N/A')}")
-                if not is_index_ticker:
+                st.write(f"**Name:** {info.get('longName', 'N/A') if info else 'N/A'}")
+                if not is_index_ticker and info:
                     st.write(f"**Sector:** {info.get('sector', 'N/A')}")
                     st.write(f"**Industry:** {info.get('industry', 'N/A')}")
-                st.write(f"**Country:** {info.get('country', 'N/A')}")
+                st.write(f"**Country:** {info.get('country', 'N/A') if info else 'N/A'}")
                 st.write(f"**Asset Type:** {asset_type}")
-                st.write(f"**Volume:** {format_volume(info.get('volume', 0))}")
-                st.write(f"**Avg Volume:** {format_volume(info.get('averageVolume', 0))}")
-                st.write(f"**Market Cap:** {format_large_number(info.get('marketCap', 0))}")
+                st.write(f"**Volume:** {format_volume(info.get('volume', 0) if info else 0)}")
+                st.write(f"**Avg Volume:** {format_volume(info.get('averageVolume', 0) if info else 0)}")
+                st.write(f"**Market Cap:** {format_large_number(info.get('marketCap', 0) if info else 0)}")
             with col2:
                 st.subheader("📈 Key Metrics")
-                if not is_index_ticker:
+                if not is_index_ticker and info:
                     st.write(f"**P/E Ratio:** {info.get('trailingPE', 0):,.2f}" if info.get('trailingPE') else "N/A")
                     st.write(f"**Forward P/E:** {info.get('forwardPE', 0):,.2f}" if info.get('forwardPE') else "N/A")
                     st.write(f"**PEG Ratio:** {info.get('pegRatio', 0):,.2f}" if info.get('pegRatio') else "N/A")
                     st.write(f"**Price/Book:** {info.get('priceToBook', 0):,.2f}" if info.get('priceToBook') else "N/A")
                     st.write(f"**Price/Sales:** {info.get('priceToSalesTrailing12Months', 0):,.2f}" if info.get('priceToSalesTrailing12Months') else "N/A")
                     st.write(f"**Dividend Yield:** {dividend_yield*100:.2f}%" if dividend_yield > 0 else "N/A")
-                st.write(f"**Beta:** {info.get('beta', 'N/A')}")
+                st.write(f"**Beta:** {info.get('beta', 'N/A') if info else 'N/A'}")
             st.markdown("---")
             
-            # FINANCIAL STATEMENTS
-            if not is_index_ticker and not income_statement.empty:
+            # FINANCIAL STATEMENTS (only for stocks)
+            if not is_index_ticker and info:
                 st.subheader("💰 Key Financials")
+                
+                # Extract financial data
                 if not income_statement.empty:
                     latest_income = income_statement.iloc[:, 0] if len(income_statement.columns) > 0 else None
                     if latest_income is not None:
@@ -2071,6 +2072,7 @@ if current_price is None or current_price <= 0:
                     operating_income = info.get('operatingIncome', 0)
                     net_income = info.get('netIncomeToCommon', 0)
                 
+                # Balance sheet data
                 if not balance_sheet.empty:
                     latest_balance = balance_sheet.iloc[:, 0] if len(balance_sheet.columns) > 0 else None
                     if latest_balance is not None:
@@ -2092,6 +2094,7 @@ if current_price is None or current_price <= 0:
                     current_assets = info.get('totalCurrentAssets', 0)
                     current_liabilities = info.get('totalCurrentLiabilities', 0)
                 
+                # Cash flow data
                 if not cashflow.empty:
                     latest_cashflow = cashflow.iloc[:, 0] if len(cashflow.columns) > 0 else None
                     if latest_cashflow is not None:
@@ -2126,35 +2129,17 @@ if current_price is None or current_price <= 0:
                 st.dataframe(df, use_container_width=True, hide_index=True)
                 st.markdown("---")
             
-            # OPTIONS CALCULATOR (WITH VALIDATION FIX)
+            # OPTIONS CALCULATOR
             if days > 0:
                 st.subheader("🎯 Options Price Calculator (Black-Scholes)")
                 
-                # Check if we have valid price data
                 if current_price <= 0:
-                    st.error(f"Cannot calculate options: Current price for {ticker} is not available (value: {current_price}). Please try again or select a different ticker.")
+                    st.error(f"Cannot calculate options: Current price for {ticker} is not available.")
                 elif strike <= 0:
-                    st.error(f"Strike price must be greater than 0. Current strike: {strike}")
+                    st.error(f"Strike price must be greater than 0.")
                 else:
-                    iv_data = get_implied_volatility_for_strike(ticker, strike, expiration_date, option_type)
-                    
-                    if iv_data and iv_data['iv'] > 0:
-                        if iv_data['is_exact']:
-                            st.success(f"📊 Using Implied Volatility: {iv_data['iv']:.1f}% (from option chain for strike ${strike})")
-                        else:
-                            st.info(f"📊 Using Implied Volatility: {iv_data['iv']:.1f}% (from closest strike ${iv_data['used_strike']:.2f})")
-                        vol_used = iv_data['iv'] / 100
-                    else:
-                        st.warning(f"📊 Using Historical Volatility: {vol_to_use*100:.1f}% (implied volatility not available)")
-                        vol_used = vol_to_use
-                    
-                    # Ensure vol_used is positive
-                    if vol_used <= 0:
-                        vol_used = 0.3
-                        st.warning(f"Invalid volatility value, using default: 30%")
-                    
                     option_price, delta, gamma, theta, vega = calculate_option_price(
-                        current_price, strike, days/365, risk_free_rate, vol_used, dividend_yield, option_type
+                        current_price, strike, days/365, risk_free_rate, vol_to_use, dividend_yield, option_type
                     )
                     
                     col1, col2, col3 = st.columns(3)
@@ -2163,24 +2148,38 @@ if current_price is None or current_price <= 0:
                         st.write(f"**Strike Price:** {format_currency(strike)}")
                         st.write(f"**Expiration:** {expiration_date.strftime('%Y-%m-%d')} ({days} days)")
                     with col2:
-                        st.write(f"**Volatility Used:** {vol_used*100:.1f}%")
+                        st.write(f"**Volatility Used:** {vol_to_use*100:.1f}%")
                         st.write(f"**Risk-Free Rate:** {risk_free_rate*100:.2f}%")
                         st.write(f"**Dividend Yield:** {format_percentage(dividend_yield*100)}")
                     with col3:
                         st.write(f"**Option Type:** {option_type}")
                     st.markdown("---")
                     
-                    col1, col2, col3, col4, col5 = st.columns(5)
+                    # Display Greeks with descriptions for beginners
+                    st.subheader("📊 Option Greeks (Risk Metrics)")
+                    st.caption("These metrics help you understand how your option price will react to different market conditions")
+                    
+                    col1, col2, col3, col4 = st.columns(4)
                     with col1:
-                        st.metric("Theoretical Price", format_currency(option_price))
-                    with col2:
                         st.metric("Delta", f"{delta:.4f}")
-                    with col3:
+                        with st.expander("ℹ️ What is Delta?", expanded=False):
+                            st.write(GREEK_DESCRIPTIONS['Delta'])
+                    with col2:
                         st.metric("Gamma", f"{gamma:.4f}")
-                    with col4:
+                        with st.expander("ℹ️ What is Gamma?", expanded=False):
+                            st.write(GREEK_DESCRIPTIONS['Gamma'])
+                    with col3:
                         st.metric("Theta (Daily)", f"{theta/365:.4f}")
-                    with col5:
+                        with st.expander("ℹ️ What is Theta?", expanded=False):
+                            st.write(GREEK_DESCRIPTIONS['Theta'])
+                    with col4:
                         st.metric("Vega (per 1%)", f"{vega:.4f}")
+                        with st.expander("ℹ️ What is Vega?", expanded=False):
+                            st.write(GREEK_DESCRIPTIONS['Vega'])
+                    
+                    st.markdown("---")
+                    st.subheader("📈 Theoretical Fair Value")
+                    st.metric("Option Price", format_currency(option_price), help="Black-Scholes calculated fair value")
                     
                     # PROBABILITY CALCULATOR
                     st.markdown("---")
@@ -2190,8 +2189,8 @@ if current_price is None or current_price <= 0:
                         st.write("**Probability of Closing Above/Below**")
                         close_price = st.number_input("Price at Expiration ($):", value=current_price, step=1.0, key="close_target", format="%.2f")
                         close_direction = st.radio("Direction:", ["Above", "Below"], index=0, key="close_direction", horizontal=True)
-                        if close_price > 0 and days > 0 and vol_used > 0:
-                            sigma = vol_used
+                        if close_price > 0 and days > 0 and vol_to_use > 0:
+                            sigma = vol_to_use
                             T_years = days / 365
                             try:
                                 if sigma * sqrt(T_years) == 0:
@@ -2201,25 +2200,27 @@ if current_price is None or current_price <= 0:
                                     prob_close = norm.cdf(-d2) if close_direction == "Above" else norm.cdf(d2)
                                 prob_close = max(0.0001, min(0.9999, prob_close))
                                 st.metric(f"Probability to close {close_direction} ${close_price:,.2f}", f"{prob_close*100:.1f}%")
+                                st.caption("Based on normal distribution assumptions")
                             except Exception as e:
                                 st.error(f"Calculation error: {str(e)}")
                         else:
                             st.info("Enter a valid price")
                     with col2:
-                        st.write("**Expected Move**")
-                        expected_move = current_price * vol_used * sqrt(days/365)
-                        st.metric("1 Standard Deviation Move (±)", format_currency(expected_move))
+                        st.write("**Expected Move (1 Std Dev)**")
+                        expected_move = current_price * vol_to_use * sqrt(days/365)
+                        st.metric("Expected Range (±)", format_currency(expected_move))
                         st.caption(f"68% probability stock stays within ±${expected_move:.2f}")
                         st.markdown("---")
                         st.write("**Option ITM Probability**")
                         itm_option_type = st.radio("Option Type:", ["Call", "Put"], index=0 if option_type == "Call" else 1, key="itm_option_type", horizontal=True)
                         try:
-                            sigma = vol_used
+                            sigma = vol_to_use
                             T_years = days / 365
                             d2 = (log(current_price / strike) + (risk_free_rate - dividend_yield - 0.5 * sigma**2) * T_years) / (sigma * sqrt(T_years))
                             prob_itm = norm.cdf(d2) if itm_option_type == "Call" else norm.cdf(-d2)
                             prob_itm = max(0.0001, min(0.9999, prob_itm))
                             st.metric(f"Probability {itm_option_type} is ITM", f"{prob_itm*100:.1f}%")
+                            st.caption("In-The-Money probability at expiration")
                         except Exception as e:
                             st.error(f"Calculation error: {str(e)}")
                     
@@ -2237,8 +2238,8 @@ if current_price is None or current_price <= 0:
                             forecast_terminal_growth = st.number_input("Terminal Growth (%)", value=3.0, step=0.5, key="forecast_terminal") / 100
                         
                         if st.button("Run Forecast", key="run_forecast"):
-                            current_revenue = info.get('totalRevenue', 0)
-                            current_margin = info.get('profitMargins', 0) * 100 if info.get('profitMargins') else 0
+                            current_revenue = info.get('totalRevenue', 0) if info else 0
+                            current_margin = info.get('profitMargins', 0) * 100 if info and info.get('profitMargins') else 0
                             if current_revenue > 0:
                                 projections = build_financial_forecast(current_revenue, current_margin, forecast_revenue_growth, forecast_margin_expansion, 5)
                                 df_projections = pd.DataFrame(projections)
@@ -2249,9 +2250,9 @@ if current_price is None or current_price <= 0:
                                 st.dataframe(df_projections, use_container_width=True, hide_index=True)
                                 
                                 enterprise_value = calculate_dcf(projections, forecast_wacc, forecast_terminal_growth)
-                                net_debt = info.get('totalDebt', 0) - info.get('totalCash', 0)
+                                net_debt = (info.get('totalDebt', 0) if info else 0) - (info.get('totalCash', 0) if info else 0)
                                 equity_value = enterprise_value - net_debt
-                                shares_outstanding = info.get('sharesOutstanding', 0)
+                                shares_outstanding = info.get('sharesOutstanding', 0) if info else 0
                                 
                                 if shares_outstanding > 0:
                                     intrinsic_value = equity_value / shares_outstanding
@@ -2283,71 +2284,59 @@ if current_price is None or current_price <= 0:
                         profit_target_pct = st.number_input("Profit Target (%)", value=50.0, step=10.0, key="profit_target")
                         profit_target_price = option_price * (1 + profit_target_pct / 100)
                         st.metric("Profit Target Price", format_currency(profit_target_price))
+                        st.caption(f"Sell at +{profit_target_pct:.0f}% gain")
                     with col2:
                         stop_loss_pct = st.number_input("Stop Loss (%)", value=25.0, step=5.0, key="stop_loss")
                         stop_loss_price = option_price * (1 - stop_loss_pct / 100)
                         st.metric("Stop Loss Price", format_currency(stop_loss_price))
+                        st.caption(f"Exit at -{stop_loss_pct:.0f}% loss")
                     
                     # TRADING SIGNAL
                     st.markdown("---")
                     st.subheader("📊 Trading Signal & Recommendation")
-                    col1, col2 = st.columns(2)
-                    with col1:
-                        market_price_input = st.number_input("Enter Actual Option Market Price ($):", value=None, step=0.05, format="%.2f", key="market_price_input")
-                    with col2:
-                        if market_price_input is not None and market_price_input > 0 and option_price > 0:
-                            price_diff = market_price_input - option_price
-                            diff_percent = (price_diff / option_price * 100)
-                            st.metric("Price Difference", format_currency(price_diff), delta=f"{diff_percent:+.1f}%")
-                        else:
-                            st.info("Enter market price to see difference")
+                    market_price_input = st.number_input("Enter Actual Option Market Price ($):", value=None, step=0.05, format="%.2f", key="market_price_input")
                     
                     if market_price_input is not None and market_price_input > 0 and option_price > 0:
+                        diff_percent = ((market_price_input - option_price) / option_price) * 100
+                        
                         if diff_percent < -15:
                             recommendation = "🔥 STRONG BUY"
                             rec_color = "#a6e3a1"
                             rec_reason = f"Option is significantly undervalued ({abs(diff_percent):.0f}% below theoretical)"
                             action = "Consider buying - market is underpricing this opportunity"
-                            risk_level = "HIGH" if diff_percent < -30 else "MODERATE"
                         elif diff_percent < -5:
                             recommendation = "✅ BUY"
                             rec_color = "#a6e3a1"
                             rec_reason = f"Option is undervalued ({abs(diff_percent):.0f}% below theoretical)"
                             action = "Good opportunity to buy - market is offering a discount"
-                            risk_level = "LOW"
                         elif diff_percent > 15:
                             recommendation = "⚠️ STRONG SELL"
                             rec_color = "#f38ba8"
                             rec_reason = f"Option is significantly overvalued ({diff_percent:.0f}% above theoretical)"
                             action = "Consider selling or avoiding - market is overpricing"
-                            risk_level = "HIGH"
                         elif diff_percent > 5:
                             recommendation = "❌ SELL / AVOID"
                             rec_color = "#f9e2af"
                             rec_reason = f"Option is overvalued ({diff_percent:.0f}% above theoretical)"
                             action = "Premium is expensive - wait for better entry"
-                            risk_level = "MODERATE"
                         else:
                             recommendation = "⏸️ HOLD / MONITOR"
                             rec_color = "#f9e2af"
                             rec_reason = f"Option is fairly priced ({abs(diff_percent):.0f}% from theoretical)"
                             action = "Wait for better opportunity or enter small position"
-                            risk_level = "LOW"
                         
-                        # Use dynamic styling based on theme for the recommendation box
                         if theme == "Light":
-                            rec_box_style = "background: linear-gradient(135deg, #ffffff 0%, #f8f9fa 100%); border-radius: 12px; padding: 20px; border-left: 5px solid " + rec_color + "; border: 1px solid #e2e8f0;"
-                            rec_text_color = "#1a1a2e"
+                            rec_box_style = f"background: linear-gradient(135deg, #ffffff 0%, #f8f9fa 100%); border-radius: 12px; padding: 20px; border-left: 5px solid {rec_color}; border: 1px solid #e2e8f0;"
+                            text_color = "#1a1a2e"
                         else:
-                            rec_box_style = "background: linear-gradient(135deg, #1e293b 0%, #0f172a 100%); border-radius: 12px; padding: 20px; border-left: 5px solid " + rec_color + ";"
-                            rec_text_color = "#e2e8f0"
+                            rec_box_style = f"background: linear-gradient(135deg, #1e293b 0%, #0f172a 100%); border-radius: 12px; padding: 20px; border-left: 5px solid {rec_color};"
+                            text_color = "#e2e8f0"
                         
                         st.markdown(f"""
                         <div style="{rec_box_style}">
                             <h3 style="margin: 0; color: {rec_color};">{recommendation}</h3>
-                            <p style="color: {rec_text_color};"><strong>Reason:</strong> {rec_reason}</p>
-                            <p style="color: {rec_text_color};"><strong>Action:</strong> {action}</p>
-                            <p style="color: {rec_text_color};"><strong>Risk Level:</strong> {risk_level}</p>
+                            <p style="color: {text_color};"><strong>Reason:</strong> {rec_reason}</p>
+                            <p style="color: {text_color};"><strong>Action:</strong> {action}</p>
                         </div>
                         """, unsafe_allow_html=True)
                         
@@ -2366,22 +2355,26 @@ if current_price is None or current_price <= 0:
                             if market_price_input < option_price:
                                 potential_gain = (option_price - market_price_input) / market_price_input * 100
                                 st.metric("Upside to Fair Value", f"+{potential_gain:.0f}%")
+                            if profit_target_price > 0:
+                                st.metric("Target Gain", f"{profit_target_pct:.0f}%", delta=f"+{format_currency(profit_target_price - market_price_input) if market_price_input else 'N/A'}")
                         with col3:
                             st.write("**Suggested Trade**")
                             if "BUY" in recommendation:
                                 st.write("✅ **BUY** this option")
-                                st.write(f"💰 Risk per contract: **{format_currency(market_price_input * 100)}**")
+                                st.write(f"💰 Risk per contract: **{format_currency(market_price_input * 100) if market_price_input else 'N/A'}**")
                             elif "SELL" in recommendation:
                                 st.write("❌ **AVOID** buying")
                             else:
                                 st.write("⏸️ **WAIT** for better price")
                         
                         # Position Size Calculator
-                        with st.expander("💰 Position Size Calculator"):
+                        with st.expander("💰 Position Size Calculator", expanded=False):
+                            st.write("**Risk Management**")
                             account_size = st.number_input("Account Size ($):", value=10000, step=1000, key="account_size", format="%d")
                             risk_percent = st.number_input("Risk Per Trade (%):", value=2.0, step=0.5, key="risk_percent")
                             max_risk = account_size * (risk_percent / 100)
                             st.metric("Max Risk per Trade", format_currency(max_risk))
+                            
                             if market_price_input and market_price_input > 0:
                                 option_cost = market_price_input * 100
                                 max_contracts = int(max_risk / option_cost) if option_cost > 0 else 0
@@ -2414,7 +2407,6 @@ if current_price is None or current_price <= 0:
             st.error(f"Error fetching data for {ticker}: {str(e)}")
     else:
         st.info("Enter a stock or index ticker in the sidebar to begin.")
-
 # ============================================================
 # TAB 2: WATCHLIST
 # ============================================================
