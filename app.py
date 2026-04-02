@@ -1651,7 +1651,7 @@ with st.sidebar:
         time.sleep(1)
         st.rerun()
 
-            st.markdown("---")
+    st.markdown("---")
     if st.button("🔄 Clear Cache & Retry", use_container_width=True):
         st.cache_data.clear()
         st.success("Cache cleared! Reloading...")
