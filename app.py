@@ -1241,6 +1241,43 @@ def is_index(ticker):
     index_tickers = ['SPY', 'QQQ', 'DIA', 'IWM', 'VIX', 'VOO', 'IVV', 'TLT', 'AGG', 'BND', 'GLD', 'SLV']
     return ticker.upper() in [x.upper() for x in index_tickers]
 
+    # Choose your data provider here - change to "DEFEATBETA" to switch
+DATA_PROVIDER = "DEFEATBETA"  # CHANGE WHEN WANTING TO SWAP DATA PROVIDERS
+
+def get_ticker_data(ticker_symbol):
+    """Unified function to get ticker data from selected provider"""
+    
+    if DATA_PROVIDER == "DEFEATBETA":
+        from defeatbeta_api import Ticker as BetaTicker
+        return BetaTicker(ticker_symbol)
+    else:
+        return yf.Ticker(ticker_symbol))
+
+def get_current_price(ticker_data):
+    """Get current price from ticker data regardless of provider"""
+    
+    if DATA_PROVIDER == "DEFEATBETA":
+        # defeatbeta-api approach
+        hist = ticker_data.history(period='1d')
+        if not hist.empty:
+            return hist['Close'].iloc[-1]
+        return None
+    else:
+        # yfinance approach
+        info = ticker_data.info
+        return info.get('regularMarketPrice', info.get('currentPrice', 0))
+
+def get_company_name(ticker_data):
+    """Get company name from ticker data"""
+    
+    if DATA_PROVIDER == "DEFEATBETA":
+        try:
+            return ticker_data.info.get('longName', ticker_data.symbol)
+        except:
+            return ticker_data.symbol
+    else:
+        return ticker_data.info.get('longName', 'N/A')
+
 def get_stock_data(ticker):
     """Fetch all data for a ticker - works with either API provider"""
     
