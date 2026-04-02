@@ -9,3 +9,4 @@ beautifulsoup4
 requests
 pytz
 redis
+defeatbeta-api
