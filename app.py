@@ -1242,7 +1242,7 @@ def is_index(ticker):
     return ticker.upper() in [x.upper() for x in index_tickers]
 
     # Choose your data provider here - change to "DEFEATBETA" to switch
-DATA_PROVIDER = "DEFEATBETA"  # CHANGE WHEN WANTING TO SWAP DATA PROVIDERS
+DATA_PROVIDER = "YFINANCE"  # CHANGE WHEN WANTING TO SWAP DATA PROVIDERS
 
 def get_ticker_data(ticker_symbol):
     """Unified function to get ticker data from selected provider"""
