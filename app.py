@@ -1700,19 +1700,19 @@ with tab1:
     if ticker:
         try:
             with st.spinner(f"Loading data for {ticker}..."):
-    data = get_stock_data(ticker)
-    
-    # Check if data loading was successful
-    if not data.get('success', False):
-        st.error(f"Could not load data for {ticker}")
-        st.info(f"Error: {data.get('error', 'Unknown error')}")
-        
-        # Show sample tickers that work
-        st.markdown("**Try these tickers that typically work well:**")
-        st.markdown("AAPL, MSFT, GOOGL, TSLA, NVDA, AMZN, META")
-        
-        # Add manual price option
-        manual_price = st.number_input("Or enter price manually to continue:", value=0.0, step=1.0, format="%.2f")
+                data = get_stock_data(ticker)
+            
+            # Check if data loading was successful
+            if not data.get('success', False):
+                st.error(f"Could not load data for {ticker}")
+                st.info(f"Error: {data.get('error', 'Unknown error')}")
+                
+                # Show sample tickers that work
+                st.markdown("**Try these tickers that typically work well:**")
+                st.markdown("AAPL, MSFT, GOOGL, TSLA, NVDA, AMZN, META")
+                
+                # Add manual price option
+                manual_price = st.number_input("Or enter price manually to continue:", value=0.0, step=1.0, format="%.2f")
         if manual_price > 0:
             current_price = manual_price
             st.success(f"Using manual price: ${manual_price:.2f}")
