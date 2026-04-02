@@ -1265,7 +1265,7 @@ def get_current_price(ticker_data):
     else:
         # yfinance approach
         info = ticker_data.info
-        return info.get('regularMarketPrice', info.get('currentPrice', 0)
+        return info.get('regularMarketPrice', info.get('currentPrice', 0))
 
 def get_company_name(ticker_data):
     """Get company name from ticker data"""
