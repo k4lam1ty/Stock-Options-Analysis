@@ -1650,13 +1650,6 @@ with st.sidebar:
         st.success("Cache cleared! Page will reload...")
         time.sleep(1)
         st.rerun()
-
-    st.markdown("---")
-    if st.button("🔄 Clear Cache & Retry", use_container_width=True):
-        st.cache_data.clear()
-        st.success("Cache cleared! Reloading...")
-        time.sleep(1)
-        st.rerun()
         
     st.caption(f"📅 Last update: {format_local_time()}")
 
