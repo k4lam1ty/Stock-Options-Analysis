@@ -15,6 +15,82 @@ import pytz
 import re
 
 # ============================================================
+# SET USER-AGENT TO AVOID BLOCKING
+# ============================================================
+
+import requests
+
+# Create a session with proper headers
+session = requests.Session()
+session.headers.update({
+    'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+    'Accept': 'application/json, text/plain, */*',
+    'Accept-Language': 'en-US,en;q=0.9',
+    'Accept-Encoding': 'gzip, deflate',
+    'Connection': 'keep-alive',
+})
+
+# Monkey patch requests to use our session
+original_get = requests.get
+def patched_get(*args, **kwargs):
+    kwargs['headers'] = session.headers
+    return original_get(*args, **kwargs)
+requests.get = patched_get
+
+# ============================================================
+# RATE LIMIT HANDLING WITH EXPONENTIAL BACKOFF
+# ============================================================
+
+import random
+from functools import wraps
+
+def rate_limit_handler(func):
+    """Decorator to handle rate limits with exponential backoff"""
+    @wraps(func)
+    def wrapper(*args, **kwargs):
+        max_retries = 5
+        base_delay = 2
+        
+        for attempt in range(max_retries):
+            try:
+                # Add random jitter to avoid synchronized requests
+                time.sleep(random.uniform(0.3, 0.8))
+                return func(*args, **kwargs)
+            except Exception as e:
+                error_msg = str(e).lower()
+                if any(phrase in error_msg for phrase in ["rate", "too many", "429", "limit"]):
+                    if attempt < max_retries - 1:
+                        delay = base_delay * (2 ** attempt) + random.uniform(0, 1)
+                        st.warning(f"⚠️ Rate limited. Retrying in {delay:.1f} seconds... (Attempt {attempt + 1}/{max_retries})")
+                        time.sleep(delay)
+                    else:
+                        st.error("❌ Rate limit exceeded. Please wait a few minutes and try again.")
+                        raise
+                else:
+                    raise
+        return None
+    return wrapper
+
+# Apply the decorator to yfinance calls
+original_get = yf.Ticker
+
+class RateLimitedTicker(yf.Ticker):
+    def __init__(self, ticker):
+        super().__init__(ticker)
+    
+    @property
+    def info(self):
+        time.sleep(random.uniform(0.3, 0.7))
+        return super().info
+    
+    def history(self, *args, **kwargs):
+        time.sleep(random.uniform(0.3, 0.7))
+        return super().history(*args, **kwargs)
+
+# Monkey patch yfinance
+yf.Ticker = RateLimitedTicker
+
+# ============================================================
 # FIX YFINANCE CONNECTION ISSUES
 # ============================================================
 
@@ -317,7 +393,7 @@ def track_request():
 # CACHING DECORATORS
 # ============================================================
 
-@st.cache_data(ttl=300, show_spinner=False)
+@st.cache_data(ttl=900, show_spinner=False)
 def get_cached_stock_info(ticker):
     try:
         stock = yf.Ticker(ticker)
@@ -325,7 +401,7 @@ def get_cached_stock_info(ticker):
     except:
         return {}
 
-@st.cache_data(ttl=300, show_spinner=False)
+@st.cache_data(ttl=900, show_spinner=False)
 def get_cached_stock_history(ticker, period='1y'):
     try:
         stock = yf.Ticker(ticker)
@@ -333,7 +409,7 @@ def get_cached_stock_history(ticker, period='1y'):
     except:
         return pd.DataFrame()
 
-@st.cache_data(ttl=300, show_spinner=False)
+@st.cache_data(ttl=900, show_spinner=False)
 def get_cached_balance_sheet(ticker):
     try:
         stock = yf.Ticker(ticker)
@@ -341,7 +417,7 @@ def get_cached_balance_sheet(ticker):
     except:
         return pd.DataFrame()
 
-@st.cache_data(ttl=300, show_spinner=False)
+@st.cache_data(ttl=900, show_spinner=False)
 def get_cached_financials(ticker):
     try:
         stock = yf.Ticker(ticker)
@@ -349,7 +425,7 @@ def get_cached_financials(ticker):
     except:
         return pd.DataFrame()
 
-@st.cache_data(ttl=300, show_spinner=False)
+@st.cache_data(ttl=900, show_spinner=False)
 def get_cached_cashflow(ticker):
     try:
         stock = yf.Ticker(ticker)
@@ -365,7 +441,7 @@ def get_cached_options(ticker):
     except:
         return []
 
-@st.cache_data(ttl=300, show_spinner=False)
+@st.cache_data(ttl=900, show_spinner=False)
 def get_cached_option_chain(ticker, expiration):
     try:
         stock = yf.Ticker(ticker)
@@ -1693,7 +1769,23 @@ with tab1:
     if ticker:
         try:
             with st.spinner(f"Loading data for {ticker}..."):
-                data = get_stock_data(ticker)
+                try:
+                    data = get_stock_data(ticker)
+                except Exception as e:
+                    st.warning(f"⚠️ Yahoo Finance rate limit detected. Trying fallback methods...")
+                    # Create minimal data structure with fallback price
+                    fallback_price = get_price_from_fallback(ticker)
+                    data = {
+                        'info': {},
+                        'hist': pd.DataFrame(),
+                        'price': fallback_price,
+                        'balance_sheet': pd.DataFrame(),
+                        'income_statement': pd.DataFrame(),
+                        'cashflow': pd.DataFrame(),
+                        'is_index': ticker.upper() in ['SPY', 'QQQ', 'DIA', 'IWM', 'VIX', 'VOO', 'IVV'],
+                        'success': fallback_price is not None,
+                        'error': str(e)
+        }
             
             # Check if data loading was successful
             if not data.get('success', False):
