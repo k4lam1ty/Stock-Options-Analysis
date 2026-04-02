@@ -90,19 +90,6 @@ class RateLimitedTicker(yf.Ticker):
 # Monkey patch yfinance
 yf.Ticker = RateLimitedTicker
 
-# ============================================================
-# FIX YFINANCE CONNECTION ISSUES
-# ============================================================
-
-# Set custom user-agent to avoid blocking
-session = requests.Session()
-session.headers.update({
-    'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36'
-})
-
-# Apply to yfinance
-import yfinance as yf
-
 st.set_page_config(
     page_title="Stock Analysis Dashboard", 
     layout="wide",
@@ -1286,6 +1273,37 @@ def get_stock_data(ticker):
             'success': False,
             'error': str(e)
         }
+# ============================================================
+# FALLBACK DATA SOURCE (ADD THIS HERE)
+# ============================================================
+
+def get_price_from_fallback(ticker):
+    """Try alternative sources when yfinance fails"""
+    
+    # Fallback 1: Use cached historical data if available
+    try:
+        hist = get_cached_stock_history(ticker, '5d')
+        if not hist.empty and 'Close' in hist.columns:
+            price = hist['Close'].iloc[-1]
+            if price and price > 0:
+                st.info(f"📊 Using last known closing price: ${price:.2f}")
+                return price
+    except:
+        pass
+    
+    # Fallback 2: Common stock prices dictionary (for major tickers)
+    common_prices = {
+        'AAPL': 175.00, 'MSFT': 420.00, 'GOOGL': 150.00, 'AMZN': 180.00,
+        'TSLA': 240.00, 'META': 500.00, 'NVDA': 900.00, 'SPY': 520.00,
+        'QQQ': 450.00, 'DIA': 390.00, 'IWM': 210.00
+    }
+    
+    if ticker.upper() in common_prices:
+        st.info(f"📊 Using estimated price for {ticker}: ${common_prices[ticker.upper()]:.2f}")
+        st.warning("⚠️ This is an estimated price. Real-time data may be limited.")
+        return common_prices[ticker.upper()]
+    
+    return None
 def calculate_rsi(data, window=14):
     delta = data.diff()
     gain = delta.where(delta > 0, 0)
@@ -1525,6 +1543,17 @@ def calculate_option_price(S, K, T, r, v, q, option_type):
         return 0, 0, 0, 0, 0
 
 # ============================================================
+# GREEK DESCRIPTIONS FOR BEGINNERS (ADD THIS HERE)
+# ============================================================
+
+GREEK_DESCRIPTIONS = {
+    'Delta': "📈 **Delta** measures how much the option price changes when the stock moves $1. Call options have positive Delta (0-1), Puts have negative Delta (-1 to 0). Higher Delta means more price movement.",
+    'Gamma': "📊 **Gamma** shows how fast Delta changes as the stock moves. Higher Gamma means Delta changes quickly - important for near-expiration options.",
+    'Theta': "⏰ **Theta** (Time Decay) shows how much value the option loses each day. Always negative for options - the closer to expiration, the faster the decay.",
+    'Vega': "🌊 **Vega** measures sensitivity to volatility changes. A Vega of 0.10 means the option price increases by $0.10 for every 1% increase in implied volatility."
+}
+
+# ============================================================
 # SIDEBAR WITH THEME (UPDATED WITH PROPER LIGHT MODE FIXES)
 # ============================================================
 
@@ -1706,29 +1735,32 @@ with st.sidebar:
     strike = st.number_input("Strike Price:", value=100.0, step=1.0, help="🔢 Use arrows or type a number")
     option_type = st.selectbox("Option Type:", ["Call", "Put"], index=0, help="📋 Click to select Call or Put")
     st.markdown("---")
-    st.header("📊 Volatility Setting")
-    volatility_source = st.radio("Volatility Source:", ["Historical Volatility (from price data)", "Implied Volatility (from option chain)"], index=0, help="🖱️ Click to select volatility source")
-    st.markdown("---")
+    st.header("📊 Volatility")
+    st.info("📈 Using Historical Volatility (calculated from price data)")
+    manual_vol = st.checkbox("Manually override volatility", value=False)
+    if manual_vol:
+        manual_vol_value = st.number_input("Manual Volatility (%):", value=30.0, step=1.0)
+    else:
+        manual_vol_value = None
     st.header("🔄 Auto-Refresh")
     auto_refresh = st.checkbox("Auto-refresh data", value=False)
     if auto_refresh:
-        refresh_interval = st.selectbox("Refresh interval:", ["120 sec", "300 sec", "600 sec"], index=1, help="🖱️ Click to select interval")
+        refresh_interval = st.selectbox("Refresh interval:", ["120 sec", "300 sec", "600 sec"], index=1)
         interval_seconds = int(refresh_interval.split()[0])
         st.caption(f"🔄 Refreshing every {interval_seconds} seconds")
         st.caption(f"⚠️ Frequent refreshes may cause rate limits")
     else:
         interval_seconds = 0
 
-         # ADD THIS CLEAR CACHE BUTTON RIGHT HERE
+    # ADD THIS CLEAR CACHE BUTTON RIGHT HERE (SAME INDENTATION AS ABOVE)
     st.markdown("---")
-    if st.button("🔄 Clear Cache & Retry", use_container_width=True):
+    if st.button("🔄 Clear Cache & Retry", key="clear_cache_btn", use_container_width=True):
         st.cache_data.clear()
         st.success("Cache cleared! Page will reload...")
         time.sleep(1)
         st.rerun()
         
     st.caption(f"📅 Last update: {format_local_time()}")
-
 # ============================================================
 # STICKY TABS CSS (UPDATED FOR BETTER LOOKING TABS)
 # ============================================================
