@@ -2722,6 +2722,20 @@ with tab3:
         news = get_high_quality_news(news_ticker, max_articles=20)
     
     if news:
+        news_sort = st.radio(
+            "Sort news by:",
+            ["Most important", "Most recent"],
+            horizontal=True,
+            key="news_sort_order",
+        )
+        if news_sort == "Most recent":
+            news = sorted(news, key=lambda article: article.get('date') or 0, reverse=True)
+        else:
+            news = sorted(
+                news,
+                key=lambda article: (article.get('importance', 0), article.get('date') or 0),
+                reverse=True,
+            )
         st.success(f"Found {len(news)} recent news articles for {news_ticker}")
         for article in news:
             title = article.get('title', 'No title')
