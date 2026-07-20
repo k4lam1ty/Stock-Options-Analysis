@@ -1689,14 +1689,19 @@ with st.sidebar:
         background: {palette['surface']} !important; color: {palette['text']} !important;
         border-color: {palette['border']} !important;
     }}
-    div[data-baseweb="select"] > div {{
-        background: {palette['surface']} !important; color: {palette['text']} !important;
+    /* Base Web powers Streamlit selectboxes.  Style the outer shell and its
+       immediate layers so the selected value cannot retain the other theme. */
+    [data-testid="stSelectbox"] [data-baseweb="select"],
+    [data-testid="stSelectbox"] [data-baseweb="select"] > div,
+    [data-testid="stSelectbox"] [data-baseweb="select"] > div > div {{
+        background-color: {palette['surface']} !important; color: {palette['text']} !important;
         border-color: {palette['border']} !important;
     }}
-    div[data-baseweb="select"] input, div[data-baseweb="select"] span {{ color: {palette['text']} !important; }}
-    div[data-baseweb="select"] svg {{ fill: {palette['text']} !important; }}
-    div[role="listbox"], div[role="listbox"] [role="option"] {{
-        background: {palette['surface']} !important; color: {palette['text']} !important;
+    [data-testid="stSelectbox"] [data-baseweb="select"] input,
+    [data-testid="stSelectbox"] [data-baseweb="select"] span {{ color: {palette['text']} !important; -webkit-text-fill-color: {palette['text']} !important; }}
+    [data-testid="stSelectbox"] [data-baseweb="select"] svg {{ fill: {palette['text']} !important; color: {palette['text']} !important; }}
+    div[data-baseweb="popover"], div[role="listbox"], div[role="listbox"] [role="option"] {{
+        background-color: {palette['surface']} !important; color: {palette['text']} !important;
     }}
     div[role="option"]:hover, div[role="option"][aria-selected="true"] {{ background: {palette['surface_alt']} !important; }}
     .stTextInput input:focus, .stNumberInput input:focus, .stDateInput input:focus,
