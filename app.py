@@ -1831,6 +1831,15 @@ div[data-testid="stTabs"] div[data-baseweb="tab-list"],
 # ============================================================
 # MAIN APP TABS
 # ============================================================
+st.markdown("""
+<style>
+/* Final tab styling: this comes after all legacy tab rules. */
+button[data-baseweb="tab"] { color: var(--text-color) !important; opacity: .62 !important; border-bottom: 0 !important; }
+button[data-baseweb="tab"][aria-selected="true"] { color: var(--text-color) !important; opacity: 1 !important; font-weight: 700 !important; border-bottom: 0 !important; }
+div[data-baseweb="tab-list"], div[role="tablist"] { border-bottom: 0 !important; }
+div[data-baseweb="tab-highlight"] { background: var(--primary-color) !important; height: 3px !important; }
+</style>
+""", unsafe_allow_html=True)
 
 tab1, tab2, tab3, tab4 = st.tabs(["📊 Analysis", "📈 Watchlist", "📰 News", "📉 Historical Data"])
 
