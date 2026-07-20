@@ -1708,6 +1708,26 @@ with st.sidebar:
     </style>
     """, unsafe_allow_html=True)
     
+    st.markdown("""
+    <style>
+    /* Let Streamlit's built-in light/dark palette win over legacy custom colors. */
+    .stApp, [data-testid="stAppViewContainer"], [data-testid="stSidebar"],
+    [data-testid="stSidebar"] > div:first-child, [data-testid="stHeader"] {
+        background: var(--background-color) !important; color: var(--text-color) !important;
+    }
+    .stApp :is(p, label, h1, h2, h3, h4, h5, h6, span),
+    [data-testid="stSidebar"] * { color: var(--text-color) !important; }
+    div[data-testid="stMetric"], [data-testid="stExpander"] {
+        background: var(--secondary-background-color) !important;
+        border-color: rgba(128,128,128,.25) !important;
+    }
+    .stTextInput input, .stNumberInput input, .stDateInput input,
+    [data-testid="stSelectbox"] [data-baseweb="select"] > div {
+        background: var(--secondary-background-color) !important;
+        color: var(--text-color) !important;
+    }
+    </style>
+    """, unsafe_allow_html=True)
     st.markdown("---")
     st.header("🔍 Input")
     ticker = st.text_input("Stock / Index Ticker:", "SPY", help="Type a ticker symbol (e.g., AAPL, MSFT, GME)").upper()
