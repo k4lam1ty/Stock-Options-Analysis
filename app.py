@@ -13,6 +13,8 @@ import json
 import os
 import pytz
 import re
+from pathlib import Path
+import streamlit.components.v1 as components
 
 # ============================================================
 # REQUEST QUEUE FOR RATE LIMITING
@@ -1205,45 +1207,21 @@ def get_implied_volatility_for_strike(ticker, strike, expiration_date, option_ty
 # TRADINGVIEW CHART
 # ============================================================
 
+_TRADINGVIEW_COMPONENT_DIR = Path(__file__).parent / "tradingview_sync_component"
+tradingview_chart = components.declare_component(
+    "tradingview_chart",
+    path=str(_TRADINGVIEW_COMPONENT_DIR),
+)
+
 def tradingview_full_chart(ticker, timeframe="D", theme="dark"):
-    """Render a TradingView chart using a palette that matches the app theme."""
-    chart_theme = "light" if theme == "light" else "dark"
-    toolbar_background = "#ffffff" if chart_theme == "light" else "#1e293b"
-    loading_background = "#f8fafc" if chart_theme == "light" else "#1e1e2e"
-    chart_symbol = json.dumps(str(ticker).upper())
-    chart_interval = json.dumps(str(timeframe))
-    chart_html = f"""
-    <div class="tradingview-widget-container">
-        <div id="tradingview_full_chart"></div>
-        <script type="text/javascript" src="https://s3.tradingview.com/tv.js"></script>
-        <script type="text/javascript">
-        new TradingView.widget({{
-            "width": "100%",
-            "height": 700,
-            "symbol": {chart_symbol},
-            "interval": {chart_interval},
-            "timezone": "America/Chicago",
-            "theme": "{chart_theme}",
-            "style": "1",
-            "locale": "en",
-            "toolbar_bg": "{toolbar_background}",
-            "enable_publishing": true,
-            "allow_symbol_change": true,
-            "save_image": true,
-            "calendar": true,
-            "container_id": "tradingview_full_chart",
-            "studies": ["RSI@tv-basicstudies", "MACD@tv-basicstudies"],
-            "withdateranges": true,
-            "hide_side_toolbar": false,
-            "show_popup_button": true,
-            "popup_width": "1000",
-            "popup_height": "650",
-            "loading_screen": {{ "backgroundColor": "{loading_background}" }}
-        }});
-        </script>
-    </div>
-    """
-    return st.components.v1.html(chart_html, height=750)
+    """Render TradingView and return an interval selected from its toolbar."""
+    return tradingview_chart(
+        ticker=str(ticker).upper(),
+        timeframe=str(timeframe),
+        theme="light" if theme == "light" else "dark",
+        key="tradingview_chart",
+        default=None,
+    )
 
 def tradingview_direct_link(ticker):
     return f"https://www.tradingview.com/chart/?symbol={ticker}"
@@ -2149,9 +2127,41 @@ with tab1:
                 """, unsafe_allow_html=True)
             else:
                 timeframe_options = {"1 Minute": "1", "5 Minutes": "5", "15 Minutes": "15", "30 Minutes": "30", "1 Hour": "60", "4 Hours": "240", "Daily": "D", "Weekly": "W", "Monthly": "M"}
-                selected_timeframe = st.selectbox("Select Timeframe:", list(timeframe_options.keys()))
-                timeframe_value = timeframe_options[selected_timeframe]
-                tradingview_full_chart(ticker, timeframe_value, chart_theme)
+                interval_to_label = {value: label for label, value in timeframe_options.items()}
+                if "chart_timeframe" not in st.session_state:
+                    st.session_state.chart_timeframe = "D"
+                if "chart_timeframe_label" not in st.session_state:
+                    st.session_state.chart_timeframe_label = interval_to_label[st.session_state.chart_timeframe]
+                if "last_chart_interval_event" not in st.session_state:
+                    st.session_state.last_chart_interval_event = None
+
+                # The placeholder keeps the selector above the chart while allowing
+                # a change made inside TradingView to update its value first.
+                timeframe_selector = st.empty()
+                selected_label = st.session_state.chart_timeframe_label
+                requested_interval = timeframe_options.get(selected_label, st.session_state.chart_timeframe)
+                chart_event = tradingview_full_chart(ticker, requested_interval, chart_theme)
+
+                if isinstance(chart_event, dict):
+                    event_id = chart_event.get("event_id")
+                    chart_interval = str(chart_event.get("interval", ""))
+                    if event_id != st.session_state.last_chart_interval_event:
+                        st.session_state.last_chart_interval_event = event_id
+                        if chart_interval in interval_to_label:
+                            st.session_state.chart_timeframe = chart_interval
+                            st.session_state.chart_timeframe_label = interval_to_label[chart_interval]
+                            st.rerun()
+
+                with timeframe_selector:
+                    selected_timeframe = st.selectbox(
+                        "Select Timeframe:",
+                        list(timeframe_options.keys()),
+                        key="chart_timeframe_label",
+                    )
+                selected_interval = timeframe_options[selected_timeframe]
+                if selected_interval != st.session_state.chart_timeframe:
+                    st.session_state.chart_timeframe = selected_interval
+                    st.rerun()
             st.markdown("---")
             
             # COMPANY INFORMATION
