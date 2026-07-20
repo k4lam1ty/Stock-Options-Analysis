@@ -1643,8 +1643,9 @@ GREEK_DESCRIPTIONS = {
 # ============================================================
 
 with st.sidebar:
-    st.header("🎨 Appearance")
-    theme = st.selectbox("Theme:", ["Dark", "Light"], index=0)
+    # Streamlit's own Settings menu controls the app appearance.
+    # This app-level selector was removed to avoid competing theme controls.
+    theme = "Light" if st.get_option("theme.base") != "dark" else "Dark"
     
     palette = {
         "Light": {
@@ -2137,9 +2138,8 @@ with tab1:
                 </div>
                 """, unsafe_allow_html=True)
             else:
-                timeframe_options = {"1 Minute": "1", "5 Minutes": "5", "15 Minutes": "15", "30 Minutes": "30", "1 Hour": "60", "4 Hours": "240", "Daily": "D", "Weekly": "W", "Monthly": "M"}
-                selected_timeframe = st.selectbox("Select Timeframe:", list(timeframe_options.keys()))
-                tradingview_full_chart(ticker, timeframe_options[selected_timeframe], chart_theme)
+                st.caption("Use the timeframe menu in the TradingView chart to change views.")
+                tradingview_full_chart(ticker, "D", chart_theme)
             st.markdown("---")
             
             # COMPANY INFORMATION
