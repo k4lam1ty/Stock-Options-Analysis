@@ -992,6 +992,16 @@ def get_earnings_history_with_numbers(ticker):
 @st.cache_data(ttl=900, show_spinner=False)
 def get_high_quality_news(ticker, max_articles=20):
     news_items = []
+    def score_headline(title, publisher, base_score):
+        """Rank market-moving headlines higher than general commentary."""
+        text = f"{title} {publisher}".lower()
+        high_impact = ['earnings', 'guidance', 'upgrade', 'downgrade', 'price target',
+                       'acquisition', 'merger', 'buyback', 'lawsuit', 'investigation',
+                       'sec', 'fda', 'approval', 'recall', 'bankruptcy', 'offering']
+        medium_impact = ['revenue', 'profit', 'forecast', 'contract', 'partnership',
+                         'launch', 'ceo', 'layoffs', 'surge', 'plunge', 'soars', 'tumbles']
+        return min(100, base_score + 30 * sum(word in text for word in high_impact)
+                   + 12 * sum(word in text for word in medium_impact))
     try:
         stock = yf.Ticker(ticker)
         yf_news = stock.news
@@ -1013,6 +1023,7 @@ def get_high_quality_news(ticker, max_articles=20):
                     importance += 25
                 elif 'cnbc' in publisher:
                     importance += 20
+                importance = score_headline(title, publisher, importance)
                 news_items.append({
                     'title': title,
                     'link': link,
@@ -1052,6 +1063,7 @@ def get_high_quality_news(ticker, max_articles=20):
                 importance += 25
             elif 'cnbc' in publisher_lower:
                 importance += 20
+            importance = score_headline(title, publisher, importance)
             news_items.append({
                 'title': title,
                 'link': link,
