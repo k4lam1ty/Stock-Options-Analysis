@@ -1543,12 +1543,16 @@ def detect_catalysts(ticker, info):
         link = article.get('link', '#')
         source = article.get('source', 'News')
         title_lower = title.lower()
-        bull_keywords = ['upgrade', 'buy', 'outperform', 'beat', 'surprise', 'acquisition', 'merger', 
-                         'partnership', 'contract', 'approval', 'launch', 'record', 'high', 'bullish', 'strong']
-        bear_keywords = ['downgrade', 'sell', 'underperform', 'miss', 'disappoint', 'lawsuit', 
-                         'investigation', 'delay', 'rejection', 'decline', 'drop', 'loss', 'bearish', 'warning']
-        bull_score = sum(2 for kw in bull_keywords if kw in title_lower)
-        bear_score = sum(2 for kw in bear_keywords if kw in title_lower)
+        bull_keywords = ['upgrade', 'outperform', 'overweight', 'buyback', 'beat estimates',
+                         'earnings beat', 'raised guidance', 'guidance raise', 'record revenue',
+                         'acquisition', 'merger', 'partnership', 'new contract', 'approval',
+                         'launch', 'bullish', 'strong growth', 'price target raised']
+        bear_keywords = ['downgrade', 'underperform', 'underweight', 'earnings miss',
+                         'missed estimates', 'cut guidance', 'lowered guidance', 'price target cut',
+                         'lawsuit', 'investigation', 'recall', 'delay', 'rejection', 'layoffs',
+                         'decline', 'plunge', 'loss', 'bearish', 'warning']
+        bull_score = sum(1 for kw in bull_keywords if kw in title_lower)
+        bear_score = sum(1 for kw in bear_keywords if kw in title_lower)
         if bull_score > bear_score and bull_score >= 2:
             bull_catalysts.append({
                 'title': title[:120] + ('...' if len(title) > 120 else ''),
