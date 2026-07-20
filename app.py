@@ -2721,8 +2721,10 @@ with tab3:
             else:
                 date_str = "Recently"
             
-            bg_color = "#f8f9fa" if theme == "Light" else "#2d2d3a"
-            link_color = "#1e1e2e" if theme == "Light" else "#cdd6f4"
+            # Use Streamlit's theme variables so news details stay readable.
+            bg_color = "var(--secondary-background-color)"
+            link_color = "var(--text-color)"
+            meta_color = "var(--text-color)"
             
             if importance >= 70:
                 badge = "🔴 HIGH IMPORTANCE"
@@ -2739,7 +2741,7 @@ with tab3:
                 <p style="margin: 0; font-weight: bold;">
                     <a href="{link}" target="_blank" style="text-decoration: none; color: {link_color};">{title}</a>
                 </p>
-                <p style="margin: 5px 0 0 0; font-size: 12px; color: {'#666' if theme == 'Light' else '#aaa'};">
+                <p style="margin: 5px 0 0 0; font-size: 12px; color: {meta_color}; opacity: 0.72;">
                     📰 {publisher} | 🕐 {date_str} | 📍 {source}
                 </p>
                 <p style="margin: 3px 0 0 0; font-size: 11px; color: {badge_color};">
