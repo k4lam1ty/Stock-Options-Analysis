@@ -1478,7 +1478,10 @@ def calculate_dcf(projections, wacc=0.08, terminal_growth=0.03):
 def detect_catalysts(ticker, info):
     bull_catalysts = []
     bear_catalysts = []
+    # Scan both the focused catalyst feed and the broader news feed.  Some
+    # providers publish an earnings/guidance headline only in the latter.
     catalyst_news = get_catalyst_news(ticker, max_articles=15)
+    catalyst_news.extend(get_high_quality_news(ticker, max_articles=20))
     if info.get('recommendationKey'):
         rec = info.get('recommendationKey', '').lower()
         if rec in ['strong_buy', 'buy']:
