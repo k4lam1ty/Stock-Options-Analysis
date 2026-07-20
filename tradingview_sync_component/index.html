@@ -1,0 +1,62 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <script src="https://unpkg.com/streamlit-component-lib@1.6.0/dist/index.js"></script>
+  <style>
+    html, body, #chart { margin: 0; width: 100%; height: 750px; overflow: hidden; }
+  </style>
+</head>
+<body>
+  <div id="chart"></div>
+  <script src="https://s3.tradingview.com/tv.js"></script>
+  <script>
+    const { Streamlit } = window.streamlitComponentLib;
+    let configurationKey = null;
+
+    function buildChart(args) {
+      const key = JSON.stringify([args.ticker, args.timeframe, args.theme]);
+      if (key === configurationKey) return;
+      configurationKey = key;
+      document.getElementById("chart").innerHTML = "";
+
+      const widget = new TradingView.widget({
+        width: "100%",
+        height: 700,
+        symbol: args.ticker,
+        interval: args.timeframe,
+        timezone: "America/Chicago",
+        theme: args.theme,
+        style: "1",
+        locale: "en",
+        toolbar_bg: args.theme === "light" ? "#ffffff" : "#1e293b",
+        enable_publishing: true,
+        allow_symbol_change: true,
+        save_image: true,
+        calendar: true,
+        container_id: "chart",
+        studies: ["RSI@tv-basicstudies", "MACD@tv-basicstudies"],
+        withdateranges: true,
+        hide_side_toolbar: false,
+        show_popup_button: true,
+        popup_width: "1000",
+        popup_height: "650",
+        loading_screen: { backgroundColor: args.theme === "light" ? "#f8fafc" : "#1e1e2e" }
+      });
+
+      widget.onChartReady(() => {
+        widget.chart().onIntervalChanged().subscribe(null, (interval) => {
+          const selected = String(interval);
+          if (selected !== String(args.timeframe)) {
+            Streamlit.setComponentValue({ interval: selected, event_id: Date.now() });
+          }
+        });
+      });
+    }
+
+    Streamlit.events.addEventListener(Streamlit.RENDER_EVENT, (event) => buildChart(event.detail.args));
+    Streamlit.setComponentReady();
+    Streamlit.setFrameHeight(750);
+  </script>
+</body>
+</html>
