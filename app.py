@@ -65,7 +65,10 @@ session.headers.update({
 # Monkey patch requests to use our session
 original_get = requests.get
 def patched_get(*args, **kwargs):
-    kwargs['headers'] = session.headers
+    # Keep request-specific headers while supplying the shared browser-like defaults.
+    headers = dict(session.headers)
+    headers.update(kwargs.pop('headers', {}) or {})
+    kwargs['headers'] = headers
     return original_get(*args, **kwargs)
 requests.get = patched_get
 
@@ -1197,6 +1200,12 @@ def get_implied_volatility_for_strike(ticker, strike, expiration_date, option_ty
 # ============================================================
 
 def tradingview_full_chart(ticker, timeframe="D", theme="dark"):
+    """Render a TradingView chart using a palette that matches the app theme."""
+    chart_theme = "light" if theme == "light" else "dark"
+    toolbar_background = "#ffffff" if chart_theme == "light" else "#1e293b"
+    loading_background = "#f8fafc" if chart_theme == "light" else "#1e1e2e"
+    chart_symbol = json.dumps(str(ticker).upper())
+    chart_interval = json.dumps(str(timeframe))
     chart_html = f"""
     <div class="tradingview-widget-container">
         <div id="tradingview_full_chart"></div>
@@ -1205,13 +1214,13 @@ def tradingview_full_chart(ticker, timeframe="D", theme="dark"):
         new TradingView.widget({{
             "width": "100%",
             "height": 700,
-            "symbol": "{ticker}",
-            "interval": "{timeframe}",
+            "symbol": {chart_symbol},
+            "interval": {chart_interval},
             "timezone": "America/Chicago",
-            "theme": "{theme}",
+            "theme": "{chart_theme}",
             "style": "1",
             "locale": "en",
-            "toolbar_bg": "#f1f3f6",
+            "toolbar_bg": "{toolbar_background}",
             "enable_publishing": true,
             "allow_symbol_change": true,
             "save_image": true,
@@ -1223,7 +1232,7 @@ def tradingview_full_chart(ticker, timeframe="D", theme="dark"):
             "show_popup_button": true,
             "popup_width": "1000",
             "popup_height": "650",
-            "loading_screen": {{ "backgroundColor": "#1e1e2e" }}
+            "loading_screen": {{ "backgroundColor": "{loading_background}" }}
         }});
         </script>
     </div>
@@ -1574,16 +1583,6 @@ def detect_catalysts(ticker, info):
 # WATCHLIST FUNCTIONS
 # ============================================================
 
-def validate_ticker(ticker):
-    try:
-        stock = yf.Ticker(ticker)
-        price = stock.info.get('regularMarketPrice', None)
-        if price and price > 0:
-            return True
-        return False
-    except:
-        return False
-
 def add_to_watchlist(ticker):
     if not ticker or ticker == '':
         return False, "No ticker entered"
@@ -1649,149 +1648,61 @@ with st.sidebar:
     st.header("🎨 Appearance")
     theme = st.selectbox("Theme:", ["Dark", "Light"], index=0)
     
-    if theme == "Light":
-        st.markdown("""
-        <style>
-        /* Main app background */
-        .stApp { background: linear-gradient(135deg, #f5f7fa 0%, #ffffff 100%) !important; }
-        .stApp, .stApp * { color: #1a1a2e !important; }
-        
-        /* Metric styling */
-        div[data-testid="stMetricValue"] { color: #1a1a2e !important; font-weight: 700 !important; font-size: 1.3rem !important; }
-        div[data-testid="stMetricLabel"] { color: #4a5568 !important; font-size: 0.8rem !important; }
-        div[data-testid="stMetric"] { background: linear-gradient(135deg, #ffffff 0%, #f8f9fa 100%) !important; border: 1px solid #e2e8f0 !important; box-shadow: 0 2px 8px rgba(0,0,0,0.04) !important; }
-        
-        /* Sidebar styling */
-        .stSidebar { background: linear-gradient(180deg, #f8f9fa 0%, #ffffff 100%) !important; border-right: 1px solid #e2e8f0 !important; }
-        .stSidebar .stMarkdown, .stSidebar p, .stSidebar label { color: #1a1a2e !important; }
-        
-        /* Input fields - WHITE BACKGROUND WITH BLACK TEXT */
-        .stTextInput input, .stNumberInput input, .stSelectbox select, .stDateInput input { 
-            background-color: #ffffff !important; 
-            color: #1a1a2e !important; 
-            border: 1px solid #cbd5e0 !important;
-        }
-        .stTextInput input:focus, .stNumberInput input:focus { 
-            border-color: #89b4fa !important; 
-            box-shadow: 0 0 0 2px rgba(137,180,250,0.2) !important; 
-        }
-        
-        /* Selectbox dropdown styling */
-        .stSelectbox div[data-baseweb="select"] div {
-            background-color: #ffffff !important;
-            color: #1a1a2e !important;
-        }
-        div[role="listbox"] div {
-            background-color: #ffffff !important;
-            color: #1a1a2e !important;
-        }
-        div[role="listbox"] div:hover {
-            background-color: #e2e8f0 !important;
-        }
-        
-        /* Number input buttons (plus/minus) */
-        .stNumberInput button {
-            background-color: #e2e8f0 !important;
-            color: #1a1a2e !important;
-            border: 1px solid #cbd5e0 !important;
-        }
-        .stNumberInput button:hover {
-            background-color: #cbd5e0 !important;
-            color: #1a1a2e !important;
-        }
-        
-        /* Button styling */
-        .stButton button { 
-            background: linear-gradient(135deg, #e2e8f0 0%, #cbd5e0 100%) !important; 
-            color: #1a1a2e !important; 
-            border: none !important; 
-        }
-        .stButton button:hover { 
-            background: linear-gradient(135deg, #cbd5e0 0%, #a0aec0 100%) !important; 
-            transform: translateY(-2px); 
-        }
-        
-        /* Remove button (watchlist) */
-        button[kind="secondary"], .stButton button[data-testid="baseButton-secondary"] {
-            background: linear-gradient(135deg, #dc3545 0%, #c82333 100%) !important;
-            color: white !important;
-            border: none !important;
-        }
-        button[kind="secondary"]:hover {
-            background: linear-gradient(135deg, #c82333 0%, #a71d2a 100%) !important;
-            transform: scale(1.05) !important;
-        }
-        
-        /* Tabs styling */
-        .stTabs [data-baseweb="tab-list"] { background-color: transparent !important; }
-        .stTabs [data-baseweb="tab"] { color: #4a5568 !important; background-color: transparent !important; }
-        .stTabs [aria-selected="true"] { color: #1a1a2e !important; border-bottom: 3px solid #89b4fa !important; }
-        
-        /* Expander styling */
-        .stExpander { background-color: #ffffff !important; border: 1px solid #e2e8f0 !important; border-radius: 12px !important; }
-        .streamlit-expanderHeader { color: #1a1a2e !important; background-color: #f8f9fa !important; border-radius: 12px !important; }
-        
-        /* Alert boxes */
-        div[data-testid="stAlert"] { background-color: #f8f9fa !important; border-radius: 12px !important; color: #1a1a2e !important; }
-        .stAlert p { color: #1a1a2e !important; }
-        
-        /* Radio buttons */
-        .stRadio label { color: #1a1a2e !important; }
-        
-        /* Checkbox */
-        .stCheckbox label { color: #1a1a2e !important; }
-        
-        /* Dataframe */
-        .stDataFrame, .dataframe, table, th, td { color: #1a1a2e !important; background-color: #ffffff !important; }
-        .stDataFrame th { background-color: #f0f0f0 !important; color: #1a1a2e !important; }
-        
-        /* Position calculator inputs */
-        .stNumberInput label { color: #1a1a2e !important; }
-        
-        /* Select timeframe box */
-        .stSelectbox [data-baseweb="select"] {
-            background-color: #ffffff !important;
-        }
-        
-        /* All select boxes */
-        select {
-            background-color: #ffffff !important;
-            color: #1a1a2e !important;
-        }
-        </style>
-        """, unsafe_allow_html=True)
-    else:
-        st.markdown("""
-        <style>
-        .stApp { background: linear-gradient(135deg, #1a1a2e 0%, #16213e 100%) !important; }
-        .stApp, .stApp * { color: #e2e8f0 !important; }
-        div[data-testid="stMetricValue"] { color: #a6e3a1 !important; font-weight: 700 !important; font-size: 1.3rem !important; }
-        div[data-testid="stMetricLabel"] { color: #94a3b8 !important; font-size: 0.8rem !important; }
-        div[data-testid="stMetric"] { background: linear-gradient(135deg, #1e293b 0%, #0f172a 100%) !important; border: 1px solid #334155 !important; box-shadow: 0 2px 8px rgba(0,0,0,0.2) !important; }
-        .stSidebar { background: linear-gradient(180deg, #0f172a 0%, #1e293b 100%) !important; border-right: 1px solid #334155 !important; }
-        .stTextInput input, .stNumberInput input, .stSelectbox select, .stDateInput input { background-color: #1e293b !important; color: #e2e8f0 !important; border: 1px solid #334155 !important; }
-        .stTextInput input:focus, .stNumberInput input:focus { border-color: #89b4fa !important; box-shadow: 0 0 0 2px rgba(137,180,250,0.2) !important; }
-        .stNumberInput button { background-color: #334155 !important; color: #e2e8f0 !important; border: 1px solid #475569 !important; }
-        .stButton button { background: linear-gradient(135deg, #334155 0%, #1e293b 100%) !important; color: #e2e8f0 !important; border: none !important; }
-        .stButton button:hover { background: linear-gradient(135deg, #475569 0%, #334155 100%) !important; transform: translateY(-2px); }
-        button[kind="secondary"], .stButton button[data-testid="baseButton-secondary"] {
-            background: linear-gradient(135deg, #dc3545 0%, #c82333 100%) !important;
-            color: white !important;
-            border: none !important;
-        }
-        button[kind="secondary"]:hover {
-            background: linear-gradient(135deg, #c82333 0%, #a71d2a 100%) !important;
-            transform: scale(1.05) !important;
-        }
-        .stTabs [data-baseweb="tab-list"] { background-color: transparent !important; }
-        .stTabs [data-baseweb="tab"] { color: #94a3b8 !important; background-color: transparent !important; }
-        .stTabs [aria-selected="true"] { color: #a6e3a1 !important; border-bottom: 3px solid #89b4fa !important; }
-        .stExpander { background-color: #1e293b !important; border: 1px solid #334155 !important; border-radius: 12px !important; }
-        div[data-testid="stAlert"] { background-color: #1e293b !important; border-radius: 12px !important; }
-        .stSelectbox div[data-baseweb="select"] div { background-color: #1e293b !important; color: #e2e8f0 !important; }
-        div[role="listbox"] div { background-color: #1e293b !important; color: #e2e8f0 !important; }
-        </style>
-        """, unsafe_allow_html=True)
+    palette = {
+        "Light": {
+            "app": "#f7f9fc", "sidebar": "#ffffff", "surface": "#ffffff",
+            "surface_alt": "#f1f5f9", "text": "#172033", "muted": "#526174",
+            "border": "#d7e0ea", "accent": "#2563eb", "metric": "#0f766e",
+        },
+        "Dark": {
+            "app": "#111827", "sidebar": "#172033", "surface": "#1f2937",
+            "surface_alt": "#273449", "text": "#e5edf7", "muted": "#a5b4c8",
+            "border": "#3b4a60", "accent": "#93c5fd", "metric": "#86efac",
+        },
+    }[theme]
+
+    st.markdown(f"""
+    <style>
+    .stApp {{ background: {palette['app']} !important; color: {palette['text']} !important; }}
+    [data-testid="stSidebar"], [data-testid="stSidebar"] > div:first-child {{
+        background: {palette['sidebar']} !important; border-right: 1px solid {palette['border']} !important;
+    }}
+    .stApp :is(p, label, h1, h2, h3, h4, h5, h6, li, span) {{ color: {palette['text']}; }}
+    [data-testid="stCaptionContainer"] *, [data-testid="stMetricLabel"] {{ color: {palette['muted']} !important; }}
+
+    div[data-testid="stMetric"] {{
+        background: {palette['surface']} !important; border: 1px solid {palette['border']} !important;
+        border-radius: 12px !important; padding: 0.8rem !important; box-shadow: 0 2px 8px rgba(15, 23, 42, 0.08) !important;
+    }}
+    div[data-testid="stMetricValue"] {{ color: {palette['metric']} !important; font-weight: 700 !important; }}
+
+    .stTextInput input, .stNumberInput input, .stDateInput input, textarea {{
+        background: {palette['surface']} !important; color: {palette['text']} !important;
+        border-color: {palette['border']} !important;
+    }}
+    div[data-baseweb="select"] > div {{
+        background: {palette['surface']} !important; color: {palette['text']} !important;
+        border-color: {palette['border']} !important;
+    }}
+    div[data-baseweb="select"] input, div[data-baseweb="select"] span {{ color: {palette['text']} !important; }}
+    div[data-baseweb="select"] svg {{ fill: {palette['text']} !important; }}
+    div[role="listbox"], div[role="listbox"] [role="option"] {{
+        background: {palette['surface']} !important; color: {palette['text']} !important;
+    }}
+    div[role="option"]:hover, div[role="option"][aria-selected="true"] {{ background: {palette['surface_alt']} !important; }}
+    .stTextInput input:focus, .stNumberInput input:focus, .stDateInput input:focus,
+    div[data-baseweb="select"] > div:focus-within {{ border-color: {palette['accent']} !important; box-shadow: 0 0 0 1px {palette['accent']} !important; }}
+    .stNumberInput button, [data-testid="stDateInput"] button {{ background: {palette['surface_alt']} !important; color: {palette['text']} !important; border-color: {palette['border']} !important; }}
+
+    .stButton button {{ background: {palette['surface_alt']} !important; color: {palette['text']} !important; border: 1px solid {palette['border']} !important; }}
+    .stButton button:hover {{ background: {palette['border']} !important; }}
+    .stTabs [data-baseweb="tab-list"] {{ background: {palette['app']} !important; }}
+    .stTabs [data-baseweb="tab"] {{ color: {palette['muted']} !important; }}
+    .stTabs [aria-selected="true"] {{ color: {palette['text']} !important; border-bottom-color: {palette['accent']} !important; }}
+    [data-testid="stExpander"] {{ background: {palette['surface']} !important; border-color: {palette['border']} !important; border-radius: 10px !important; }}
+    [data-testid="stAlert"] {{ border-radius: 10px !important; }}
+    </style>
+    """, unsafe_allow_html=True)
     
     st.markdown("---")
     st.header("🔍 Input")
