@@ -44,7 +44,9 @@ class RequestQueue:
             self.request_times.append(time.time())
 
 # Create a global request queue
-request_queue = RequestQueue(max_requests_per_second=2)
+# Yahoo's unofficial endpoints are sensitive to bursts.  One request per second
+# is intentionally conservative; the caches below keep normal use responsive.
+request_queue = RequestQueue(max_requests_per_second=1)
 
 # ============================================================
 # SET USER-AGENT TO AVOID BLOCKING
@@ -561,6 +563,7 @@ def validate_ticker(ticker):
 # IMPROVED EARNINGS FUNCTIONS WITH BETTER DATE & ESTIMATE EXTRACTION
 # ============================================================
 
+@st.cache_data(ttl=1800, show_spinner=False)
 def get_earnings_calendar_data_enhanced(ticker, debug=False):
     """
     Get comprehensive earnings calendar data with multiple methods
@@ -944,6 +947,7 @@ def get_earnings_with_details(ticker, debug=False):
     """Get full earnings details including time and estimates"""
     return get_earnings_calendar_data_enhanced(ticker, debug=debug)
 
+@st.cache_data(ttl=1800, show_spinner=False)
 def get_earnings_history_with_numbers(ticker):
     earnings_data = []
     try:
@@ -985,6 +989,7 @@ def get_earnings_history_with_numbers(ticker):
 # NEWS FUNCTIONS
 # ============================================================
 
+@st.cache_data(ttl=900, show_spinner=False)
 def get_high_quality_news(ticker, max_articles=20):
     news_items = []
     try:
@@ -1067,6 +1072,7 @@ def get_high_quality_news(ticker, max_articles=20):
     unique_news.sort(key=lambda x: (x['importance'], x['date'] if x['date'] else 0), reverse=True)
     return unique_news[:max_articles]
 
+@st.cache_data(ttl=900, show_spinner=False)
 def get_catalyst_news(ticker, max_articles=15):
     catalyst_items = []
     try:
@@ -1287,23 +1293,26 @@ def get_company_name(ticker_data):
     else:
         return ticker_data.info.get('longName', 'N/A')
 
+@st.cache_data(ttl=600, show_spinner=False)
 def get_stock_data(ticker):
     """Fetch all data for a ticker - works with either API provider"""
     
     request_queue.wait_if_needed()
     
     try:
-        # Get ticker data from selected provider
-        ticker_data = get_ticker_data(ticker)
-        
-        # Get current price
-        current_price = get_current_price(ticker_data)
-        
-        # Get historical data (similar for both APIs)
-        hist = ticker_data.history(period='1y')
-        
-        # Get company info
-        company_name = get_company_name(ticker_data)
+        ticker = ticker.upper().strip()
+        if DATA_PROVIDER == "YFINANCE":
+            # Reuse the same cached responses everywhere in the app.  Calling
+            # Ticker.info/history directly here used to bypass the cache on every rerun.
+            info = get_cached_stock_info(ticker)
+            hist = get_cached_stock_history(ticker, '1y')
+            current_price = info.get('regularMarketPrice', info.get('currentPrice', 0))
+            company_name = info.get('longName', ticker)
+        else:
+            ticker_data = get_ticker_data(ticker)
+            current_price = get_current_price(ticker_data)
+            hist = ticker_data.history(period='1y')
+            company_name = get_company_name(ticker_data)
         
         # For financials, defeatbeta-api may have limitations
         # You may need to keep yfinance for balance sheet data
@@ -2643,7 +2652,9 @@ with tab3:
         st.caption(f"Pulling news from: Yahoo Finance, Google News")
     with col2:
         if st.button("🔄 Refresh News", key="refresh_news"):
-            st.cache_data.clear()
+            # Refreshing news should not flush stock, options, and earnings caches.
+            get_high_quality_news.clear()
+            get_catalyst_news.clear()
             st.rerun()
     
     with st.spinner(f"Fetching latest news for {news_ticker}... (this may take a few seconds)"):
