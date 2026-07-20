@@ -2693,7 +2693,9 @@ with tab2:
 
 with tab3:
     st.header("📰 Latest Market News")
-    news_ticker = st.text_input("Ticker for news:", value=ticker if ticker else "AAPL", key="news_ticker")
+    # Keep the news list in sync with the main sidebar ticker.
+    news_ticker = ticker if ticker else "AAPL"
+    st.caption(f"Showing news for: **{news_ticker}**")
     col1, col2 = st.columns([3, 1])
     with col1:
         st.caption(f"Pulling news from: Yahoo Finance, Google News")
