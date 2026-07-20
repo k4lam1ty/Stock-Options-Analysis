@@ -1726,6 +1726,24 @@ with st.sidebar:
         background: var(--secondary-background-color) !important;
         color: var(--text-color) !important;
     }
+    /* One clear active-tab indicator that works in both Streamlit themes. */
+    .stTabs [data-baseweb="tab-list"], .stTabs [role="tablist"] {
+        border-bottom: 0 !important;
+    }
+    .stTabs [data-baseweb="tab"] {
+        color: var(--text-color) !important;
+        opacity: 0.62;
+        border-bottom: 0 !important;
+    }
+    .stTabs [data-baseweb="tab"][aria-selected="true"] {
+        color: var(--text-color) !important;
+        opacity: 1;
+        font-weight: 600;
+    }
+    .stTabs [data-baseweb="tab-highlight"] {
+        background-color: var(--primary-color) !important;
+        height: 3px !important;
+    }
     </style>
     """, unsafe_allow_html=True)
     st.markdown("---")
