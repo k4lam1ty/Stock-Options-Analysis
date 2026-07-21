@@ -378,6 +378,22 @@ st.markdown("""
     .stCodeBlock {
         border-radius: 12px !important;
     }
+    /* Browser-native help bubble; unlike Streamlit's tooltip icon it stays
+       visible in both light and dark appearances. */
+    .dashboard-help-bubble {
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        width: 16px;
+        height: 16px;
+        margin-left: 4px;
+        border: 1px solid currentColor;
+        border-radius: 50%;
+        color: var(--text-color, currentColor);
+        font: 700 11px/1 Arial, sans-serif;
+        cursor: help;
+        vertical-align: text-bottom;
+    }
 
     /* Final responsive pass.  Streamlit renders the same Python layout for
        every screen size, so these browser-side rules turn wide rows into a
@@ -491,6 +507,17 @@ def get_cached_stock_info(ticker):
     except Exception as exc:
         logger.debug("Could not load stock info for %s: %s", ticker, exc)
         return {}
+
+@st.cache_data(ttl=300, show_spinner=False)
+def get_cached_earnings_dates(ticker):
+    """Fetch Yahoo's earnings schedule once for both upcoming and past EPS."""
+    try:
+        request_queue.wait_if_needed()
+        earnings_dates = yf.Ticker(ticker).get_earnings_dates(limit=16)
+        return earnings_dates if earnings_dates is not None else pd.DataFrame()
+    except Exception as exc:
+        logger.debug("Could not load earnings schedule for %s: %s", ticker, exc)
+        return pd.DataFrame()
 
 @st.cache_data(ttl=300, show_spinner=False)
 def get_cached_stock_history(ticker, period='1y'):
@@ -685,19 +712,35 @@ def install_page_navigation_helpers():
                 button.type = 'button';
                 button.setAttribute('aria-label', 'Back to top');
                 button.innerHTML = '↑ <span>Back to top</span>';
-                button.addEventListener('click', () => {
-                    const mainScrollers = Array.from(doc.querySelectorAll('*'))
-                        .filter((item) => {
-                            const style = window.parent.getComputedStyle(item);
-                            const canScroll = ['auto', 'scroll'].includes(style.overflowY) && item.scrollHeight > item.clientHeight;
-                            return canScroll && !item.closest('[data-testid="stSidebar"]');
-                        });
-                    mainScrollers.forEach((item) => item.scrollTo({ top: 0, behavior: 'smooth' }));
-                    if (doc.scrollingElement) doc.scrollingElement.scrollTo({ top: 0, behavior: 'smooth' });
-                    window.parent.scrollTo({ top: 0, behavior: 'smooth' });
-                });
                 doc.body.appendChild(button);
             }
+            // Streamlit's scroll container varies by browser and deployment.
+            // Update the action on every rerun, including when the existing
+            // fixed button was created by an earlier version of this app.
+            button.onclick = () => {
+                const mainSelectors = [
+                    '[data-testid="stAppViewContainer"]',
+                    '[data-testid="stMain"]',
+                    'section.main',
+                    'main',
+                ];
+                const mainScrollers = mainSelectors
+                    .map((selector) => doc.querySelector(selector))
+                    .filter(Boolean);
+                Array.from(doc.querySelectorAll('*')).forEach((item) => {
+                    const style = window.parent.getComputedStyle(item);
+                    const canScroll = ['auto', 'scroll'].includes(style.overflowY) && item.scrollHeight > item.clientHeight;
+                    if (canScroll && !item.closest('[data-testid="stSidebar"]')) mainScrollers.push(item);
+                });
+                [...new Set(mainScrollers)].forEach((item) => {
+                    item.scrollTo({ top: 0, behavior: 'smooth' });
+                    item.scrollTop = 0;
+                });
+                doc.documentElement.scrollTop = 0;
+                doc.body.scrollTop = 0;
+                if (doc.scrollingElement) doc.scrollingElement.scrollTo({ top: 0, behavior: 'smooth' });
+                window.parent.scrollTo({ top: 0, behavior: 'smooth' });
+            };
         } catch (error) {
             // The dashboard remains fully usable if a browser blocks parent access.
         }
@@ -921,6 +964,30 @@ def get_earnings_calendar_data_enhanced(ticker, debug=False):
     
     if debug:
         earnings_info['debug_info'].append(f"Searching earnings data for {ticker}")
+
+    # Method 0: Yahoo's earnings schedule contains both upcoming estimated
+    # dates and past reported EPS.  TradingView often displays the same kind
+    # of estimated date, so use it before the less reliable calendar page.
+    try:
+        earnings_dates = get_cached_earnings_dates(ticker)
+        if earnings_dates is not None and not earnings_dates.empty:
+            for report_date, row in earnings_dates.iterrows():
+                parsed_date = pd.Timestamp(report_date)
+                comparison_date = parsed_date.tz_localize(None).date() if parsed_date.tzinfo else parsed_date.date()
+                if comparison_date < date.today():
+                    continue
+                earnings_info['date'] = parsed_date
+                earnings_info['confirmed'] = False
+                earnings_info['source'] = 'Yahoo earnings schedule (estimated)'
+                eps_estimate = row.get('EPS Estimate')
+                if eps_estimate is not None and not pd.isna(eps_estimate):
+                    earnings_info['eps_estimate'] = float(eps_estimate)
+                if debug:
+                    earnings_info['debug_info'].append(f"Method 0 - scheduled earnings: {parsed_date}")
+                break
+    except Exception as e:
+        if debug:
+            earnings_info['debug_info'].append(f"Scheduled earnings error: {str(e)}")
     
     # Method 1: Try yfinance calendar first
     try:
@@ -1298,8 +1365,7 @@ def get_earnings_history_with_numbers(ticker):
     """
     earnings_data = []
     try:
-        stock = yf.Ticker(ticker)
-        earnings_dates = stock.get_earnings_dates(limit=12)
+        earnings_dates = get_cached_earnings_dates(ticker)
         if earnings_dates is not None and not earnings_dates.empty:
             for report_date, row in earnings_dates.iterrows():
                 actual = row.get('Reported EPS')
@@ -2815,7 +2881,15 @@ with tab1:
                     st.write(f"**Price/Book:** {info.get('priceToBook', 0):,.2f}" if info.get('priceToBook') else "N/A")
                     st.write(f"**Price/Sales:** {info.get('priceToSalesTrailing12Months', 0):,.2f}" if info.get('priceToSalesTrailing12Months') else "N/A")
                     st.write(f"**Dividend Yield:** {dividend_yield*100:.2f}%" if dividend_yield > 0 else "N/A")
-                st.write(f"**Beta:** {info.get('beta', 'N/A') if info else 'N/A'}")
+                beta_value = info.get('beta') if info else None
+                beta_display = f"{float(beta_value):.2f}" if beta_value is not None and not pd.isna(beta_value) else "N/A"
+                st.markdown(
+                    f"**Beta:** {beta_display}"
+                    "<span class=\"dashboard-help-bubble\" "
+                    "title=\"Beta measures how much a stock tends to move compared with the overall market. "
+                    "A beta of 1 moves about like the market; above 1 tends to move more; below 1 tends to move less.\">i</span>",
+                    unsafe_allow_html=True,
+                )
             st.markdown("---")
             
             # FINANCIAL STATEMENTS (only for stocks)
