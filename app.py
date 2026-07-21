@@ -413,7 +413,7 @@ st.markdown("""
         border: 1px solid rgba(128, 128, 128, .45);
         border-radius: 10px;
         background: var(--secondary-background-color, #1f2937);
-        color: var(--dashboard-control-text, #111827) !important;
+        color: var(--dashboard-control-text, #f8fafc) !important;
         font-size: 0.82rem;
         font-weight: 400;
         line-height: 1.35;
@@ -428,12 +428,12 @@ st.markdown("""
     .greek-card {
         min-height: 80px;
         padding: 0.8rem;
-        border: 1px solid var(--dashboard-option-card-border, #d8dee8);
+        border: 1px solid var(--dashboard-option-card-border, #374151);
         border-radius: 16px;
-        background: var(--dashboard-option-card-bg, #ffffff);
+        background: var(--dashboard-option-card-bg, #0e1117);
     }
     .greek-title {
-        color: var(--text-color, #f8fafc);
+        color: var(--dashboard-control-text, #f8fafc);
         font-size: 0.88rem;
         font-weight: 600;
     }
@@ -454,7 +454,7 @@ st.markdown("""
         align-items: center;
         gap: 0.3rem;
         margin: 0 0 0.25rem;
-        color: var(--text-color, #f8fafc);
+        color: var(--dashboard-control-text, #f8fafc);
         font-size: 0.9rem;
         font-weight: 600;
     }
@@ -674,7 +674,25 @@ def install_page_navigation_helpers():
     <script>
     setTimeout(() => {
         try {
-            const doc = window.parent.document;
+            // Streamlit can nest custom components inside more than one iframe.
+            // Walk upward until we reach the actual dashboard document instead of
+            // styling an empty component frame.
+            let appWindow = window;
+            let doc = null;
+            for (let depth = 0; depth < 6; depth += 1) {
+                try {
+                    const candidate = appWindow.document;
+                    if (candidate.querySelector('[data-testid="stAppViewContainer"], [data-testid="stMain"], section.main')) {
+                        doc = candidate;
+                        break;
+                    }
+                    if (appWindow.parent === appWindow) break;
+                    appWindow = appWindow.parent;
+                } catch (ignored) {
+                    break;
+                }
+            }
+            if (!doc) doc = window.parent.document;
             const root = doc.documentElement;
             const colorBrightness = (value) => {
                 if (!value || value === 'transparent') return null;
@@ -703,13 +721,13 @@ def install_page_navigation_helpers():
             // inherit an old server-side CSS variable after the visitor changes
             // Streamlit's appearance, even though the visible page is light.
             for (const element of themeElements) {
-                const styles = window.parent.getComputedStyle(element);
+                const styles = appWindow.getComputedStyle(element);
                 brightness = colorBrightness(styles.backgroundColor);
                 if (brightness !== null) break;
             }
             if (brightness === null) {
                 for (const element of themeElements) {
-                    const styles = window.parent.getComputedStyle(element);
+                    const styles = appWindow.getComputedStyle(element);
                     brightness = colorBrightness(styles.getPropertyValue('--background-color').trim());
                     if (brightness !== null) break;
                 }
@@ -734,7 +752,7 @@ def install_page_navigation_helpers():
                     const probeY = Math.max(2, Math.ceil(rect.top + rect.height / 2));
                     let probe = doc.elementFromPoint(probeX, probeY);
                     while (probe && probe !== doc.body) {
-                        const visibleBrightness = colorBrightness(window.parent.getComputedStyle(probe).backgroundColor);
+                        const visibleBrightness = colorBrightness(appWindow.getComputedStyle(probe).backgroundColor);
                         if (visibleBrightness !== null) return visibleBrightness > 150;
                         probe = probe.parentElement;
                     }
@@ -794,9 +812,18 @@ def install_page_navigation_helpers():
             setTimeout(paintCustomThemeElements, 350);
             setTimeout(paintCustomThemeElements, 1000);
 
+            // Streamlit's Settings theme switch changes colors in the browser
+            // without necessarily rerunning Python.  Keep the small set of
+            // custom HTML cards synchronized with the visible app theme.
+            setInterval(() => {
+                paintTabs();
+                paintCustomThemeElements();
+            }, 900);
+
             // Use a plain ASCII X so every browser renders the watchlist control
             // consistently instead of treating it like an emoji.
             const paintRemoveButtons = () => {
+                const isLight = getVisiblePageIsLight();
                 doc.querySelectorAll('button').forEach((removeButton) => {
                     if (removeButton.textContent.trim() !== 'X') return;
                     removeButton.style.setProperty('min-width', '2rem', 'important');
@@ -841,7 +868,7 @@ def install_page_navigation_helpers():
                 button.id = 'dashboard-back-to-top';
                 button.type = 'button';
                 button.setAttribute('aria-label', 'Back to top');
-                button.innerHTML = '↑ <span>Back to top</span>';
+                button.innerHTML = '&#8593; <span>Back to top</span>';
                 doc.body.appendChild(button);
             }
             // Streamlit's scroll container varies by browser and deployment.
@@ -858,7 +885,7 @@ def install_page_navigation_helpers():
                     .map((selector) => doc.querySelector(selector))
                     .filter(Boolean);
                 Array.from(doc.querySelectorAll('*')).forEach((item) => {
-                    const style = window.parent.getComputedStyle(item);
+                    const style = appWindow.getComputedStyle(item);
                     const canScroll = ['auto', 'scroll'].includes(style.overflowY) && item.scrollHeight > item.clientHeight;
                     if (canScroll && !item.closest('[data-testid="stSidebar"]')) mainScrollers.push(item);
                 });
@@ -869,7 +896,7 @@ def install_page_navigation_helpers():
                 doc.documentElement.scrollTop = 0;
                 doc.body.scrollTop = 0;
                 if (doc.scrollingElement) doc.scrollingElement.scrollTo({ top: 0, behavior: 'smooth' });
-                window.parent.scrollTo({ top: 0, behavior: 'smooth' });
+                appWindow.scrollTo({ top: 0, behavior: 'smooth' });
             };
         } catch (error) {
             // The dashboard remains fully usable if a browser blocks parent access.
@@ -1793,7 +1820,23 @@ def tradingview_full_chart(ticker, timeframe="D", theme="dark"):
         <script>
         function appIsUsingLightTheme() {{
             try {{
-                const parentDoc = window.parent.document;
+                // Streamlit can nest an HTML component in more than one iframe.
+                // Walk upward until we reach the document that owns the app.
+                let appWindow = window;
+                let parentDoc = null;
+                for (let level = 0; level < 5; level += 1) {{
+                    try {{
+                        if (appWindow.document.querySelector('[data-testid="stAppViewContainer"], [data-testid="stMain"], section.main')) {{
+                            parentDoc = appWindow.document;
+                            break;
+                        }}
+                        if (appWindow.parent === appWindow) break;
+                        appWindow = appWindow.parent;
+                    }} catch (ignored) {{
+                        break;
+                    }}
+                }}
+                if (!parentDoc) parentDoc = window.parent.document;
                 const brightnessOf = (color) => {{
                     if ((color || '').startsWith('#')) {{
                         let hex = color.slice(1);
@@ -1809,22 +1852,26 @@ def tradingview_full_chart(ticker, timeframe="D", theme="dark"):
                 }};
                 // Look immediately above this embedded chart.  That samples the
                 // visible Streamlit page, not a wrapper with stale theme CSS.
-                const frame = window.frameElement;
+                let frame = window.frameElement;
+                if (!frame) {{
+                    frame = Array.from(parentDoc.querySelectorAll('iframe'))
+                        .find((item) => item.contentWindow === window) || null;
+                }}
                 if (frame) {{
                     const rect = frame.getBoundingClientRect();
                     let probe = parentDoc.elementFromPoint(Math.max(2, rect.left + 8), Math.max(2, rect.top - 8));
                     while (probe && probe !== parentDoc.body) {{
-                        const brightness = brightnessOf(window.parent.getComputedStyle(probe).backgroundColor);
+                        const brightness = brightnessOf(appWindow.getComputedStyle(probe).backgroundColor);
                         if (brightness !== null) return brightness > 150;
                         probe = probe.parentElement;
                     }}
                 }}
-                const rail = window.parent.getComputedStyle(parentDoc.documentElement)
+                const rail = appWindow.getComputedStyle(parentDoc.documentElement)
                     .getPropertyValue('--dashboard-sticky-rail').trim();
                 const railBrightness = brightnessOf(rail);
                 if (railBrightness !== null) return railBrightness > 150;
                 const appRoot = parentDoc.querySelector('section.main') || parentDoc.querySelector('[data-testid="stMain"]') || parentDoc.body;
-                const fallbackBrightness = brightnessOf(window.parent.getComputedStyle(appRoot).backgroundColor);
+                const fallbackBrightness = brightnessOf(appWindow.getComputedStyle(appRoot).backgroundColor);
                 return fallbackBrightness !== null ? fallbackBrightness > 150 : false;
             }} catch (error) {{
                 return false;
