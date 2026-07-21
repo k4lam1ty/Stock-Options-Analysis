@@ -17,6 +17,25 @@ import html
 import logging
 from urllib.parse import urlparse
 
+# Persistent sign-in storage.  The cookie value is encrypted with a private
+# Streamlit secret; the cookie manager is optional so the app still works while
+# the owner is adding that secret for the first time.
+try:
+    from streamlit_cookies_manager import EncryptedCookieManager
+    _cookie_password = st.secrets.get("COOKIE_PASSWORD")
+except Exception:
+    EncryptedCookieManager = None
+    _cookie_password = None
+
+login_cookies = None
+if EncryptedCookieManager is not None and _cookie_password:
+    login_cookies = EncryptedCookieManager(
+        prefix="stock-options-analysis/",
+        password=_cookie_password,
+    )
+    if not login_cookies.ready():
+        st.stop()
+
 logger = logging.getLogger(__name__)
 
 # ============================================================
@@ -951,6 +970,31 @@ if 'watchlist' not in st.session_state:
 # ACCOUNT SIGN-IN (SUPABASE)
 # ============================================================
 
+PERSISTENT_SESSION_COOKIE = "supabase_login"
+
+
+def persist_login_tokens(access_token, refresh_token):
+    """Store the token pair encrypted in the visitor's browser cookie."""
+    if login_cookies is None:
+        return
+    login_cookies[PERSISTENT_SESSION_COOKIE] = json.dumps({
+        "access_token": access_token,
+        "refresh_token": refresh_token,
+    })
+    login_cookies.save()
+
+
+def clear_persistent_login():
+    """Forget this browser's encrypted Supabase session."""
+    if login_cookies is None:
+        return
+    try:
+        del login_cookies[PERSISTENT_SESSION_COOKIE]
+        login_cookies.save()
+    except KeyError:
+        pass
+
+
 def get_supabase_client():
     """Create a fresh Supabase client for this visitor's Streamlit session."""
     try:
@@ -969,7 +1013,14 @@ def get_supabase_client():
     tokens = st.session_state.get("supabase_tokens")
     if tokens:
         try:
-            client.auth.set_session(tokens["access_token"], tokens["refresh_token"])
+            response = client.auth.set_session(tokens["access_token"], tokens["refresh_token"])
+            active_session = getattr(response, "session", None)
+            if active_session:
+                st.session_state.supabase_tokens = {
+                    "access_token": active_session.access_token,
+                    "refresh_token": active_session.refresh_token,
+                }
+                persist_login_tokens(active_session.access_token, active_session.refresh_token)
         except Exception:
             st.session_state.pop("supabase_tokens", None)
             st.session_state.pop("account_email", None)
@@ -983,6 +1034,28 @@ def save_login_session(auth_session, email):
     }
     st.session_state.account_email = email
     st.session_state.pop("watchlist_loaded_for", None)
+    persist_login_tokens(auth_session.access_token, auth_session.refresh_token)
+
+
+def restore_persistent_login(auth_client):
+    """Restore and refresh a previously saved encrypted Supabase session."""
+    if "supabase_tokens" in st.session_state or login_cookies is None:
+        return
+    try:
+        saved_session = json.loads(login_cookies.get(PERSISTENT_SESSION_COOKIE, ""))
+        access_token = saved_session["access_token"]
+        refresh_token = saved_session["refresh_token"]
+        response = auth_client.auth.set_session(access_token, refresh_token)
+        auth_session = getattr(response, "session", None)
+        user = getattr(response, "user", None)
+        if auth_session and user and getattr(user, "email", None):
+            save_login_session(auth_session, user.email)
+        else:
+            clear_persistent_login()
+    except Exception:
+        # The refresh token may be expired, revoked, or already replaced.  In
+        # that case, remove it and show the regular sign-in form.
+        clear_persistent_login()
 
 
 def show_login_screen(auth_client):
@@ -1035,6 +1108,7 @@ def show_login_screen(auth_client):
 
 
 supabase = get_supabase_client()
+restore_persistent_login(supabase)
 if "supabase_tokens" not in st.session_state:
     show_login_screen(supabase)
     st.stop()
@@ -2472,6 +2546,7 @@ with st.sidebar:
             pass
         for key in ("supabase_tokens", "account_email", "watchlist_loaded_for", "watchlist"):
             st.session_state.pop(key, None)
+        clear_persistent_login()
         st.rerun()
     st.markdown("---")
 
