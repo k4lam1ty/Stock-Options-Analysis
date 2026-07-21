@@ -1219,39 +1219,39 @@ def get_earnings_with_details(ticker, debug=False):
 
 @st.cache_data(ttl=1800, show_spinner=False)
 def get_earnings_history_with_numbers(ticker):
+    """Return quarterly reported-vs-estimated EPS only.
+
+    Financial-statement Net Income is not EPS and must never be used as an
+    earnings-result fallback.  It was the source of the misleading large
+    dollar values and empty estimate/surprise columns.
+    """
     earnings_data = []
     try:
         stock = yf.Ticker(ticker)
-        earnings = stock.earnings
-        if earnings is not None and not earnings.empty:
-            for date, row in earnings.iterrows():
-                if isinstance(row, pd.Series):
-                    eps_actual = row.get('epsActual', row.get('Earnings', None))
-                    eps_estimate = row.get('epsEstimate', row.get('Estimate', None))
-                    earnings_data.append({
-                        'date': date,
-                        'actual_eps': eps_actual,
-                        'estimated_eps': eps_estimate,
-                        'surprise_pct': ((eps_actual - eps_estimate) / abs(eps_estimate)) * 100 if eps_actual and eps_estimate else None
-                    })
-    except:
-        pass
-    if not earnings_data:
-        try:
-            financials = get_cached_financials(ticker)
-            if financials is not None and not financials.empty and 'Net Income' in financials.index:
-                net_income = financials.loc['Net Income']
-                if not net_income.empty:
-                    for i, (date, value) in enumerate(net_income.items()):
-                        if i < 4:
-                            earnings_data.append({
-                                'date': date,
-                                'actual_eps': value / 1e6 if abs(value) > 1e6 else value,
-                                'estimated_eps': None,
-                                'surprise_pct': None
-                            })
-        except:
-            pass
+        earnings_dates = stock.get_earnings_dates(limit=12)
+        if earnings_dates is not None and not earnings_dates.empty:
+            for report_date, row in earnings_dates.iterrows():
+                actual = row.get('Reported EPS')
+                estimate = row.get('EPS Estimate')
+                if pd.isna(actual) or pd.isna(estimate):
+                    continue
+                actual = float(actual)
+                estimate = float(estimate)
+                surprise = row.get('Surprise(%)')
+                if pd.isna(surprise):
+                    surprise = ((actual - estimate) / abs(estimate)) * 100 if estimate != 0 else None
+                else:
+                    surprise_text = str(surprise).replace('%', '').strip()
+                    surprise = float(surprise_text)
+                    surprise = surprise * 100 if abs(surprise) <= 1 else surprise
+                earnings_data.append({
+                    'date': report_date,
+                    'actual_eps': actual,
+                    'estimated_eps': estimate,
+                    'surprise_pct': surprise,
+                })
+    except Exception as exc:
+        logger.debug("Could not load quarterly EPS history for %s: %s", ticker, exc)
     earnings_data.sort(key=lambda x: x['date'], reverse=True)
     return earnings_data[:8]
 
@@ -2617,7 +2617,7 @@ with tab1:
                             actual = earnings.get('actual_eps')
                             estimated = earnings.get('estimated_eps')
                             surprise = earnings.get('surprise_pct')
-                            if actual and estimated:
+                            if actual is not None and estimated is not None:
                                 color = "🟢" if surprise > 0 else "🔴" if surprise < 0 else "⚪"
                                 st.write(f"{color} **{date_str}**")
                                 st.write(f"   Actual: ${actual:.2f} | Est: ${estimated:.2f}")
@@ -2629,8 +2629,7 @@ with tab1:
                                 st.write(f"📊 {date_str}")
                             st.markdown("---")
                     else:
-                        st.info("Historical earnings data not available")
-                        st.caption("This may be a newer stock or data not yet available")
+                        st.info("Quarterly EPS history and analyst estimates are not available for this ticker right now.")
                 
                 st.markdown("---")
                 
@@ -3353,8 +3352,9 @@ with tab4:
                     actual = earnings.get('actual_eps')
                     estimated = earnings.get('estimated_eps')
                     surprise = earnings.get('surprise_pct')
-                    if actual and estimated:
-                        earnings_data.append({'Date': date_str, 'Actual EPS': f"${actual:.2f}", 'Estimate EPS': f"${estimated:.2f}", 'Surprise %': f"{surprise:+.1f}%"})
+                    if actual is not None and estimated is not None:
+                        surprise_display = f"{surprise:+.1f}%" if surprise is not None else "N/A"
+                        earnings_data.append({'Date': date_str, 'Actual EPS': f"${actual:.2f}", 'Estimate EPS': f"${estimated:.2f}", 'Surprise %': surprise_display})
                     elif actual:
                         earnings_data.append({'Date': date_str, 'Actual EPS': f"${actual:.2f}", 'Estimate EPS': 'N/A', 'Surprise %': 'N/A'})
                     else:
@@ -3365,7 +3365,7 @@ with tab4:
                 else:
                     st.info("Detailed earnings data not available")
             else:
-                st.info("Historical earnings data not available")
+                st.info("Quarterly EPS history and analyst estimates are not available for this ticker right now.")
             
             st.markdown("---")
             st.subheader("💰 Financial Trends")
