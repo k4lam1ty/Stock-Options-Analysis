@@ -1813,11 +1813,13 @@ def tradingview_full_chart(ticker, timeframe="D", theme="dark"):
     """Render a chart that automatically follows Streamlit's active appearance."""
     chart_symbol = json.dumps(str(ticker).upper())
     chart_interval = json.dumps(str(timeframe))
+    preferred_light_theme = json.dumps(str(theme).lower() == "light")
     chart_html = f"""
     <div class="tradingview-widget-container">
         <div id="tradingview_full_chart"></div>
         <script src="https://s3.tradingview.com/tv.js"></script>
         <script>
+        const serverSelectedLightTheme = {preferred_light_theme};
         function appIsUsingLightTheme() {{
             try {{
                 // Streamlit can nest an HTML component in more than one iframe.
@@ -1872,9 +1874,9 @@ def tradingview_full_chart(ticker, timeframe="D", theme="dark"):
                 if (railBrightness !== null) return railBrightness > 150;
                 const appRoot = parentDoc.querySelector('section.main') || parentDoc.querySelector('[data-testid="stMain"]') || parentDoc.body;
                 const fallbackBrightness = brightnessOf(appWindow.getComputedStyle(appRoot).backgroundColor);
-                return fallbackBrightness !== null ? fallbackBrightness > 150 : false;
+                return fallbackBrightness !== null ? fallbackBrightness > 150 : serverSelectedLightTheme;
             }} catch (error) {{
-                return false;
+                return serverSelectedLightTheme;
             }}
         }}
         const useLightTheme = appIsUsingLightTheme();
@@ -2624,6 +2626,25 @@ with st.sidebar:
 # The helper creates a fixed main-page button, not a sidebar control.
 install_page_navigation_helpers()
 
+# Give every custom dashboard element a correct first-paint color.  The small
+# browser helper above keeps this synchronized if a visitor changes Settings
+# without a Python rerun, but these values also prevent a dark fallback from
+# briefly appearing while light mode is loading (and vice versa).
+dashboard_surface = "#ffffff" if theme == "Light" else "#0e1117"
+st.markdown(f"""
+<style>
+:root {{
+    --dashboard-sticky-bg: {dashboard_surface} !important;
+    --dashboard-sticky-rail: {dashboard_surface} !important;
+    --dashboard-sticky-border: {palette['border']} !important;
+    --dashboard-control-text: {palette['text']} !important;
+    --dashboard-tab-text: {palette['text']} !important;
+    --dashboard-option-card-bg: {dashboard_surface} !important;
+    --dashboard-option-card-border: {palette['border']} !important;
+}}
+</style>
+""", unsafe_allow_html=True)
+
 # ============================================================
 # STICKY TABS CSS (UPDATED FOR BETTER LOOKING TABS)
 # ============================================================
@@ -3236,15 +3257,15 @@ with tab1:
                     greek_source = "Black-Scholes model (historical volatility)"
                     with st.expander("Enter or compare broker Greeks (optional)", expanded=False):
                         st.info(
-                            "To make the app's fair-value math closer to Robinhood: in the sidebar, "
+                            "To make the app's fair-value math closer to your broker: in the sidebar, "
                             "turn on **Manually override volatility** and enter the **implied volatility (IV)** "
-                            "shown by Robinhood for this exact contract. Broker Greeks below only change the displayed Greek cards."
+                            "shown by your broker for this exact contract. Broker Greeks below only change the displayed Greek cards."
                         )
                         use_broker_greeks = st.checkbox(
                             "Use the broker values below in the Greek cards",
                             key="use_broker_greeks",
                         )
-                        st.caption("Enter the values shown by Robinhood for this exact expiration, strike, and call/put selection.")
+                        st.caption("Enter the values shown by your broker for this exact expiration, strike, and call/put selection.")
                         broker_col1, broker_col2, broker_col3, broker_col4 = st.columns(4)
                         with broker_col1:
                             broker_delta = st.number_input("Broker Delta", value=float(delta), step=0.0001, format="%.4f", key="broker_delta")
