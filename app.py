@@ -660,7 +660,9 @@ def format_percentage(value):
 def format_large_number(value):
     if value is None or value == 0:
         return "$0"
-    if value >= 1_000_000_000:
+    if value >= 1_000_000_000_000:
+        return f"${value/1_000_000_000_000:,.2f}T"
+    elif value >= 1_000_000_000:
         return f"${value/1_000_000_000:,.2f}B"
     elif value >= 1_000_000:
         return f"${value/1_000_000:,.2f}M"
