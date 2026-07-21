@@ -2837,7 +2837,22 @@ with tab1:
                     
                     st.markdown("---")
                     st.subheader("📈 Theoretical Fair Value")
-                    st.metric("Option Price", format_currency(option_price), help="Black-Scholes calculated fair value")
+                    # A very far out-of-the-money option can legitimately be worth
+                    # less than one cent.  Showing "$0.00" makes that look like a
+                    # broken calculation, so make the tiny value explicit.
+                    if option_price < 0.005:
+                        st.metric(
+                            "Option Price",
+                            "< $0.01",
+                            help="Black-Scholes calculated fair value",
+                        )
+                        st.caption(
+                            "The model estimates this contract is worth less than a penny. "
+                            "This usually means the strike is far from the current stock price "
+                            "or there is very little time remaining."
+                        )
+                    else:
+                        st.metric("Option Price", format_currency(option_price), help="Black-Scholes calculated fair value")
                     
                     # PROBABILITY CALCULATOR
                     st.markdown("---")
@@ -2983,18 +2998,22 @@ with tab1:
                             rec_reason = f"Option is fairly priced ({abs(diff_percent):.0f}% from theoretical)"
                             action = "Wait for better opportunity or enter small position"
                         
-                        if theme == "Light":
-                            rec_box_style = f"background: linear-gradient(135deg, #ffffff 0%, #f8f9fa 100%); border-radius: 12px; padding: 20px; border-left: 5px solid {rec_color}; border: 1px solid #e2e8f0;"
-                            text_color = "#1a1a2e"
-                        else:
-                            rec_box_style = f"background: linear-gradient(135deg, #1e293b 0%, #0f172a 100%); border-radius: 12px; padding: 20px; border-left: 5px solid {rec_color};"
-                            text_color = "#e2e8f0"
+                        # These use Streamlit's live CSS variables instead of the
+                        # server-side theme setting, which can be stale after a
+                        # visitor switches the appearance from the Streamlit menu.
+                        rec_box_style = (
+                            f"background: var(--secondary-background-color); border-radius: 12px; "
+                            f"padding: 20px; border-left: 5px solid {rec_color}; "
+                            f"border-top: 1px solid rgba(128, 128, 128, .28); "
+                            f"border-right: 1px solid rgba(128, 128, 128, .28); "
+                            f"border-bottom: 1px solid rgba(128, 128, 128, .28);"
+                        )
                         
                         st.markdown(f"""
                         <div style="{rec_box_style}">
-                            <h3 style="margin: 0; color: {rec_color};">{recommendation}</h3>
-                            <p style="color: {text_color};"><strong>Reason:</strong> {rec_reason}</p>
-                            <p style="color: {text_color};"><strong>Action:</strong> {action}</p>
+                            <h3 style="margin: 0; color: {rec_color} !important;">{recommendation}</h3>
+                            <p style="color: var(--text-color) !important;"><strong>Reason:</strong> {rec_reason}</p>
+                            <p style="color: var(--text-color) !important;"><strong>Action:</strong> {action}</p>
                         </div>
                         """, unsafe_allow_html=True)
                         
