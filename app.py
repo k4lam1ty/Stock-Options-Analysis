@@ -449,6 +449,21 @@ st.markdown("""
         right: auto;
         left: 0;
     }
+    .forecast-label {
+        display: flex;
+        align-items: center;
+        gap: 0.3rem;
+        margin: 0 0 0.25rem;
+        color: var(--text-color, #f8fafc);
+        font-size: 0.9rem;
+        font-weight: 600;
+    }
+    .forecast-label .beta-help-panel {
+        top: 24px;
+        bottom: auto;
+        right: auto;
+        left: 0;
+    }
 
     /* Final responsive pass.  Streamlit renders the same Python layout for
        every screen size, so these browser-side rules turn wide rows into a
@@ -3088,6 +3103,11 @@ with tab1:
                     display_theta, display_vega = theta / 365, vega
                     greek_source = "Black-Scholes model (historical volatility)"
                     with st.expander("Enter or compare broker Greeks (optional)", expanded=False):
+                        st.info(
+                            "To make the app's fair-value math closer to Robinhood: in the sidebar, "
+                            "turn on **Manually override volatility** and enter the **implied volatility (IV)** "
+                            "shown by Robinhood for this exact contract. Broker Greeks below only change the displayed Greek cards."
+                        )
                         use_broker_greeks = st.checkbox(
                             "Use the broker values below in the Greek cards",
                             key="use_broker_greeks",
@@ -3212,11 +3232,27 @@ with tab1:
                         st.write("**Assumptions**")
                         col1, col2 = st.columns(2)
                         with col1:
-                            forecast_revenue_growth = st.number_input("Revenue Growth (% per year)", value=10.0, step=1.0, key="forecast_growth")
-                            forecast_margin_expansion = st.number_input("Margin Expansion (% per year)", value=0.5, step=0.1, key="forecast_margin")
+                            st.markdown("""<div class="forecast-label">Revenue Growth (% per year)
+                            <details class="beta-help"><summary class="dashboard-help-bubble">i</summary>
+                            <div class="beta-help-panel"><strong>Revenue Growth</strong><br>Your assumed yearly increase in company revenue for the next five years.</div>
+                            </details></div>""", unsafe_allow_html=True)
+                            forecast_revenue_growth = st.number_input("Revenue Growth", value=10.0, step=1.0, key="forecast_growth", label_visibility="collapsed")
+                            st.markdown("""<div class="forecast-label">Margin Expansion (% per year)
+                            <details class="beta-help"><summary class="dashboard-help-bubble">i</summary>
+                            <div class="beta-help-panel"><strong>Margin Expansion</strong><br>Your assumed yearly improvement in profit margin, measured in percentage points.</div>
+                            </details></div>""", unsafe_allow_html=True)
+                            forecast_margin_expansion = st.number_input("Margin Expansion", value=0.5, step=0.1, key="forecast_margin", label_visibility="collapsed")
                         with col2:
-                            forecast_wacc = st.number_input("WACC (%)", value=8.0, step=0.5, key="forecast_wacc") / 100
-                            forecast_terminal_growth = st.number_input("Terminal Growth (%)", value=3.0, step=0.5, key="forecast_terminal") / 100
+                            st.markdown("""<div class="forecast-label">WACC (%)
+                            <details class="beta-help"><summary class="dashboard-help-bubble">i</summary>
+                            <div class="beta-help-panel"><strong>WACC</strong><br>The discount rate used to convert future cash flow into today's dollars. Higher WACC means a lower estimated value.</div>
+                            </details></div>""", unsafe_allow_html=True)
+                            forecast_wacc = st.number_input("WACC", value=8.0, step=0.5, key="forecast_wacc", label_visibility="collapsed") / 100
+                            st.markdown("""<div class="forecast-label">Terminal Growth (%)
+                            <details class="beta-help"><summary class="dashboard-help-bubble">i</summary>
+                            <div class="beta-help-panel"><strong>Terminal Growth</strong><br>The long-term annual growth rate assumed after the five-year forecast. This should usually be modest.</div>
+                            </details></div>""", unsafe_allow_html=True)
+                            forecast_terminal_growth = st.number_input("Terminal Growth", value=3.0, step=0.5, key="forecast_terminal", label_visibility="collapsed") / 100
                         
                         if st.button("Run Forecast", key="run_forecast"):
                             current_revenue = info.get('totalRevenue', 0) if info else 0
