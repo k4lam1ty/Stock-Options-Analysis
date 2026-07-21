@@ -2195,7 +2195,7 @@ with st.sidebar:
     """, unsafe_allow_html=True)
     st.markdown("---")
     st.header("🔍 Input")
-    ticker = st.text_input("Stock / Index Ticker:", "SPY", help="Type a ticker symbol (e.g., AAPL, MSFT, GME)").upper()
+    ticker = st.text_input("Stock / Index Ticker:", "SPY").upper()
     st.caption("📝 Type a ticker symbol (e.g., AAPL, MSFT, GME)")
     st.markdown("---")
     st.header("💰 Rates")
@@ -2212,7 +2212,7 @@ with st.sidebar:
         risk_free_rate = st.number_input("Risk-Free Rate (%):", value=4.5, step=0.1) / 100
     st.markdown("---")
     st.header("⚙️ Options Calculator")
-    expiration_date = st.date_input("Expiration Date:", value=date.today(), min_value=date.today(), help="📅 Click calendar to select date")
+    expiration_date = st.date_input("Expiration Date:", value=date.today(), min_value=date.today())
     today = date.today()
     if expiration_date >= today:
         days = (expiration_date - today).days
@@ -2220,8 +2220,8 @@ with st.sidebar:
     else:
         days = 0
         st.error("Expiration date must be in the future")
-    strike = st.number_input("Strike Price:", value=100.0, step=1.0, help="🔢 Use arrows or type a number")
-    option_type = st.selectbox("Option Type:", ["Call", "Put"], index=0, help="📋 Click to select Call or Put")
+    strike = st.number_input("Strike Price:", value=100.0, step=1.0)
+    option_type = st.selectbox("Option Type:", ["Call", "Put"], index=0)
     st.markdown("---")
     st.header("📊 Volatility")
     st.info("📈 Using Historical Volatility (calculated from price data)")
@@ -2517,7 +2517,7 @@ with tab1:
                 st.subheader("📅 Earnings Calendar & Estimates")
                 
                 # Optional debug mode
-                debug_mode = st.checkbox("🔧 Debug Earnings Data", value=False, help="Show detailed earnings data sources")
+                debug_mode = st.checkbox("🔧 Debug Earnings Data", value=False)
                 
                 # Use enhanced earnings info
                 if debug_mode:
@@ -2840,13 +2840,17 @@ with tab1:
                     
                     col1, col2, col3, col4 = st.columns(4)
                     with col1:
-                        st.metric("Delta", f"{delta:.4f}", help=GREEK_DESCRIPTIONS['Delta'])
+                        st.metric("Delta", f"{delta:.4f}")
+                        st.caption("Price change for a $1 stock move.")
                     with col2:
-                        st.metric("Gamma", f"{gamma:.4f}", help=GREEK_DESCRIPTIONS['Gamma'])
+                        st.metric("Gamma", f"{gamma:.4f}")
+                        st.caption("How quickly Delta changes.")
                     with col3:
-                        st.metric("Theta (Daily)", f"{theta/365:.4f}", help=GREEK_DESCRIPTIONS['Theta'])
+                        st.metric("Theta (Daily)", f"{theta/365:.4f}")
+                        st.caption("Estimated daily time decay.")
                     with col4:
-                        st.metric("Vega (per 1%)", f"{vega:.4f}", help=GREEK_DESCRIPTIONS['Vega'])
+                        st.metric("Vega (per 1%)", f"{vega:.4f}")
+                        st.caption("Price change from a 1% IV move.")
                     
                     st.markdown("---")
                     st.subheader("📈 Theoretical Fair Value")
@@ -2854,18 +2858,14 @@ with tab1:
                     # less than one cent.  Showing "$0.00" makes that look like a
                     # broken calculation, so make the tiny value explicit.
                     if option_price < 0.005:
-                        st.metric(
-                            "Option Price",
-                            "< $0.01",
-                            help="Black-Scholes calculated fair value",
-                        )
+                        st.metric("Option Price", "< $0.01")
                         st.caption(
                             "The model estimates this contract is worth less than a penny. "
                             "This usually means the strike is far from the current stock price "
                             "or there is very little time remaining."
                         )
                     else:
-                        st.metric("Option Price", format_currency(option_price), help="Black-Scholes calculated fair value")
+                        st.metric("Option Price", format_currency(option_price))
                     
                     # PROBABILITY CALCULATOR
                     st.markdown("---")
@@ -3132,7 +3132,6 @@ with tab2:
         st.caption(f"📊 {len(st.session_state.watchlist)} tickers in watchlist")
         show_watchlist_details = st.checkbox(
             "Show market cap and earnings (slower)", value=False, key="show_watchlist_details",
-            help="Prices are loaded together. These extra details require separate data requests for each ticker.",
         )
         col1, col2, col3, col4, col5, col6 = st.columns([1.2, 1.2, 1.8, 1.8, 1.2, 0.6])
         with col1:
@@ -3209,7 +3208,7 @@ with tab2:
                     else:
                         st.write(item['Earnings'])
                 with col6:
-                    if st.button("X", key=f"remove_{item['Ticker']}", help=f"Remove {item['Ticker']}"):
+                    if st.button("X", key=f"remove_{item['Ticker']}"):
                         remove_from_watchlist(item['Ticker'])
                         st.rerun()
     else:
