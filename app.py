@@ -1344,8 +1344,10 @@ def get_implied_volatility_for_strike(ticker, strike, expiration_date, option_ty
 # ============================================================
 
 def tradingview_full_chart(ticker, timeframe="D", theme="dark"):
-    """Render a reliable TradingView embed that follows the app theme."""
-    chart_theme = "light" if theme == "light" else "dark"
+    """Render the embedded chart in a consistently readable dark style."""
+    # Streamlit's browser-only appearance setting is not available to this
+    # Python code.  A dark chart avoids a bright panel inside the dark app.
+    chart_theme = "dark"
     toolbar_background = "#ffffff" if chart_theme == "light" else "#1e293b"
     loading_background = "#f8fafc" if chart_theme == "light" else "#1e1e2e"
     chart_symbol = json.dumps(str(ticker).upper())
@@ -1952,6 +1954,41 @@ with st.sidebar:
     .stTabs [data-baseweb="tab-highlight"] {
         background-color: var(--primary-color) !important;
         height: 3px !important;
+    }
+    /* Final form-control pass: Base Web nests several elements inside each
+       Streamlit control, so every layer must use the active Streamlit colors. */
+    [data-testid="stTextInput"] input,
+    [data-testid="stNumberInput"] input,
+    [data-testid="stDateInput"] input,
+    [data-testid="stTextArea"] textarea,
+    [data-baseweb="input"] input,
+    [data-baseweb="base-input"] input {
+        background-color: var(--secondary-background-color) !important;
+        color: var(--text-color) !important;
+        -webkit-text-fill-color: var(--text-color) !important;
+    }
+    [data-testid="stTextInput"] [data-baseweb="base-input"],
+    [data-testid="stNumberInput"] [data-baseweb="base-input"],
+    [data-testid="stDateInput"] [data-baseweb="base-input"],
+    [data-testid="stTextArea"] [data-baseweb="base-input"],
+    [data-testid="stSelectbox"] [data-baseweb="select"],
+    [data-testid="stSelectbox"] [data-baseweb="select"] > div,
+    [data-testid="stSelectbox"] [data-baseweb="select"] > div > div {
+        background-color: var(--secondary-background-color) !important;
+        border-color: rgba(128, 128, 128, 0.35) !important;
+        color: var(--text-color) !important;
+    }
+    [data-testid="stNumberInput"] button,
+    [data-testid="stDateInput"] button,
+    [data-testid="stSelectbox"] svg {
+        background-color: var(--secondary-background-color) !important;
+        color: var(--text-color) !important;
+        fill: var(--text-color) !important;
+        border-color: rgba(128, 128, 128, 0.35) !important;
+    }
+    [data-baseweb="popover"], [role="listbox"], [role="option"] {
+        background-color: var(--secondary-background-color) !important;
+        color: var(--text-color) !important;
     }
     </style>
     """, unsafe_allow_html=True)
