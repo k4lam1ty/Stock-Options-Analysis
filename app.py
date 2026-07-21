@@ -990,7 +990,7 @@ def get_earnings_history_with_numbers(ticker):
 # ============================================================
 
 @st.cache_data(ttl=900, show_spinner=False)
-def get_high_quality_news(ticker, max_articles=20):
+def get_high_quality_news(ticker, max_articles=50):
     news_items = []
     def score_headline(title, publisher, base_score):
         """Rank market-moving headlines higher than general commentary."""
@@ -2719,7 +2719,13 @@ with tab3:
             st.rerun()
     
     with st.spinner(f"Fetching latest news for {news_ticker}... (this may take a few seconds)"):
-        news = get_high_quality_news(news_ticker, max_articles=20)
+        article_limit = st.select_slider(
+            "Articles to show:",
+            options=[20, 50, 75],
+            value=50,
+            key="news_article_limit",
+        )
+        news = get_high_quality_news(news_ticker, max_articles=article_limit)
     
     if news:
         news_sort = st.radio(
