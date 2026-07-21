@@ -536,9 +536,9 @@ def install_page_navigation_helpers():
                 return (Number(rgb[0]) * 299 + Number(rgb[1]) * 587 + Number(rgb[2]) * 114) / 1000;
             };
             const themeElements = [
-                doc.querySelector('section.main'),
                 doc.querySelector('[data-testid="stAppViewContainer"]'),
                 doc.querySelector('.stApp'),
+                doc.querySelector('section.main'),
                 doc.body,
                 doc.documentElement,
                 doc.querySelector('[data-testid="stHeader"]'),
@@ -546,19 +546,19 @@ def install_page_navigation_helpers():
             let brightness = null;
             for (const element of themeElements) {
                 const styles = window.parent.getComputedStyle(element);
-                brightness = colorBrightness(styles.getPropertyValue('--background-color').trim()) ?? colorBrightness(styles.backgroundColor);
+                brightness = colorBrightness(styles.backgroundColor) ?? colorBrightness(styles.getPropertyValue('--background-color').trim());
                 if (brightness !== null) break;
             }
             const isLight = brightness !== null ? brightness > 150 : false;
             root.style.setProperty('--dashboard-sticky-bg', isLight ? '#ffffff' : '#0e1117');
-            root.style.setProperty('--dashboard-sticky-rail', isLight ? '#f3f5f8' : '#1b2430');
+            root.style.setProperty('--dashboard-sticky-rail', isLight ? '#ffffff' : '#0e1117');
             root.style.setProperty('--dashboard-sticky-border', isLight ? '#d8dee8' : '#374151');
             root.style.setProperty('--dashboard-control-text', isLight ? '#111827' : '#f8fafc');
             root.style.setProperty('--dashboard-tab-text', isLight ? '#1f2937' : '#f8fafc');
 
             const paintTabs = () => {
                 const rail = isLight ? '#ffffff' : '#0e1117';
-                const bar = isLight ? '#f3f5f8' : '#1b2430';
+                const bar = rail;
                 const border = isLight ? '#d8dee8' : '#374151';
                 const text = isLight ? '#1f2937' : '#f8fafc';
                 const tabLists = doc.querySelectorAll('[data-testid="stTabs"] [role="tablist"], [data-testid="stTabs"] [data-baseweb="tab-list"]');
@@ -566,11 +566,12 @@ def install_page_navigation_helpers():
                     list.style.setProperty('background-color', bar, 'important');
                     list.style.setProperty('border-color', border, 'important');
                     list.style.setProperty('box-shadow', `0 10px 22px -16px ${rail}`, 'important');
+                    list.style.setProperty('width', 'fit-content', 'important');
+                    list.style.setProperty('max-width', '100%', 'important');
                     list.querySelectorAll('[role="tab"], [data-baseweb="tab"]').forEach((tab) => {
-                        const active = tab.getAttribute('aria-selected') === 'true';
-                        tab.style.setProperty('color', active ? '#ffffff' : text, 'important');
-                        tab.style.setProperty('background-color', active ? '#ff4b4b' : 'transparent', 'important');
-                        tab.querySelectorAll('*').forEach((child) => child.style.setProperty('color', active ? '#ffffff' : text, 'important'));
+                        tab.style.setProperty('color', text, 'important');
+                        tab.style.setProperty('background-color', 'transparent', 'important');
+                        tab.querySelectorAll('*').forEach((child) => child.style.setProperty('color', text, 'important'));
                     });
                 });
             };
@@ -2156,17 +2157,44 @@ with st.sidebar:
         background-color: var(--secondary-background-color) !important;
         color: var(--text-color) !important;
     }
-    /* Keep dropdown arrows, +/- controls, and help icons readable in both modes. */
+    /* Keep dropdown arrows and +/- controls readable in both modes. */
     [data-testid="stSelectbox"] svg,
     [data-testid="stNumberInput"] svg,
-    [data-testid="stDateInput"] svg,
-    [data-testid="stTooltipIcon"],
-    [data-testid="stTooltipIcon"] svg,
-    button[aria-label*="help" i],
-    button[aria-label*="help" i] svg {
+    [data-testid="stDateInput"] svg {
         color: var(--dashboard-control-text, #f8fafc) !important;
         fill: var(--dashboard-control-text, #f8fafc) !important;
         -webkit-text-fill-color: var(--dashboard-control-text, #f8fafc) !important;
+    }
+    /* Rebuild Streamlit's help icon as an outlined question mark.  This avoids
+       the invisible white-question-on-white-circle problem in dark mode. */
+    [data-testid="stTooltipIcon"],
+    button[aria-label*="help" i] {
+        width: 17px !important;
+        height: 17px !important;
+        min-width: 17px !important;
+        box-sizing: border-box !important;
+        display: inline-flex !important;
+        align-items: center !important;
+        justify-content: center !important;
+        background: transparent !important;
+        border: 1.5px solid var(--dashboard-control-text, #f8fafc) !important;
+        border-radius: 50% !important;
+        color: transparent !important;
+        position: relative !important;
+        padding: 0 !important;
+    }
+    [data-testid="stTooltipIcon"] svg,
+    button[aria-label*="help" i] svg {
+        display: none !important;
+    }
+    [data-testid="stTooltipIcon"]::after,
+    button[aria-label*="help" i]::after {
+        content: "?" !important;
+        color: var(--dashboard-control-text, #f8fafc) !important;
+        font-family: Arial, sans-serif !important;
+        font-size: 11px !important;
+        font-weight: 700 !important;
+        line-height: 1 !important;
     }
     </style>
     """, unsafe_allow_html=True)
@@ -2264,7 +2292,8 @@ st.markdown("""
 /* Solid floating navigation bar for the sticky dashboard tabs. */
 div[data-testid="stTabs"] div[data-baseweb="tab-list"],
 div[data-testid="stTabs"] div[role="tablist"] {
-    width: 100% !important;
+    width: fit-content !important;
+    max-width: 100% !important;
     box-sizing: border-box !important;
     background-color: var(--dashboard-sticky-rail, #1b2430) !important;
     border: 1px solid var(--dashboard-sticky-border, #374151) !important;
@@ -2296,17 +2325,17 @@ div[data-testid="stTabs"] [role="tab"] * {
     color: var(--dashboard-tab-text, #f8fafc) !important;
 }
 div[data-testid="stTabs"] [data-baseweb="tab"][aria-selected="true"] {
-    background-color: var(--primary-color) !important;
-    color: #ffffff !important;
+    background-color: transparent !important;
+    color: var(--dashboard-tab-text, #f8fafc) !important;
     opacity: 1 !important;
     font-weight: 700 !important;
 }
 div[data-testid="stTabs"] [data-baseweb="tab"][aria-selected="true"] * {
-    color: #ffffff !important;
+    color: var(--dashboard-tab-text, #f8fafc) !important;
 }
 div[data-testid="stTabs"] [role="tab"][aria-selected="true"],
 div[data-testid="stTabs"] [role="tab"][aria-selected="true"] * {
-    color: #ffffff !important;
+    color: var(--dashboard-tab-text, #f8fafc) !important;
 }
 div[data-testid="stTabs"] [data-baseweb="tab-highlight"] {
     display: none !important;
