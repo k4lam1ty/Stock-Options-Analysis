@@ -3079,6 +3079,34 @@ with tab1:
                     # Display Greeks with descriptions for beginners
                     st.subheader("📊 Option Greeks (Risk Metrics)")
                     st.caption("These metrics help you understand how your option price will react to different market conditions")
+
+                    # Robinhood and other brokers use the option market's
+                    # implied volatility for the exact contract.  The model
+                    # above uses historical volatility, so provide a clear
+                    # place to compare or use the broker-provided Greeks.
+                    display_delta, display_gamma = delta, gamma
+                    display_theta, display_vega = theta / 365, vega
+                    greek_source = "Black-Scholes model (historical volatility)"
+                    with st.expander("Enter or compare broker Greeks (optional)", expanded=False):
+                        use_broker_greeks = st.checkbox(
+                            "Use the broker values below in the Greek cards",
+                            key="use_broker_greeks",
+                        )
+                        st.caption("Enter the values shown by Robinhood for this exact expiration, strike, and call/put selection.")
+                        broker_col1, broker_col2, broker_col3, broker_col4 = st.columns(4)
+                        with broker_col1:
+                            broker_delta = st.number_input("Broker Delta", value=float(delta), step=0.0001, format="%.4f", key="broker_delta")
+                        with broker_col2:
+                            broker_gamma = st.number_input("Broker Gamma", value=float(gamma), step=0.0001, format="%.4f", key="broker_gamma")
+                        with broker_col3:
+                            broker_theta = st.number_input("Broker Theta (daily)", value=float(theta / 365), step=0.0001, format="%.4f", key="broker_theta")
+                        with broker_col4:
+                            broker_vega = st.number_input("Broker Vega (per 1%)", value=float(vega), step=0.0001, format="%.4f", key="broker_vega")
+                        if use_broker_greeks:
+                            display_delta, display_gamma = broker_delta, broker_gamma
+                            display_theta, display_vega = broker_theta, broker_vega
+                            greek_source = "Broker-entered values for the selected contract"
+                    st.caption(f"Showing: {greek_source}")
                     
                     col1, col2, col3, col4 = st.columns(4)
                     with col1:
@@ -3086,28 +3114,28 @@ with tab1:
                         <div class="greek-card"><div class="greek-title">Delta
                         <details class="beta-help"><summary class="dashboard-help-bubble">i</summary>
                         <div class="beta-help-panel"><strong>Delta</strong><br>Estimated option-price change when the stock moves $1.</div>
-                        </details></div><div class="greek-value">{delta:.4f}</div></div>
+                        </details></div><div class="greek-value">{display_delta:.4f}</div></div>
                         """, unsafe_allow_html=True)
                     with col2:
                         st.markdown(f"""
                         <div class="greek-card"><div class="greek-title">Gamma
                         <details class="beta-help"><summary class="dashboard-help-bubble">i</summary>
                         <div class="beta-help-panel"><strong>Gamma</strong><br>How quickly Delta changes as the stock price moves.</div>
-                        </details></div><div class="greek-value">{gamma:.4f}</div></div>
+                        </details></div><div class="greek-value">{display_gamma:.4f}</div></div>
                         """, unsafe_allow_html=True)
                     with col3:
                         st.markdown(f"""
                         <div class="greek-card"><div class="greek-title">Theta (Daily)
                         <details class="beta-help"><summary class="dashboard-help-bubble">i</summary>
                         <div class="beta-help-panel"><strong>Theta</strong><br>Estimated amount of option value lost each day from time passing.</div>
-                        </details></div><div class="greek-value">{theta/365:.4f}</div></div>
+                        </details></div><div class="greek-value">{display_theta:.4f}</div></div>
                         """, unsafe_allow_html=True)
                     with col4:
                         st.markdown(f"""
                         <div class="greek-card"><div class="greek-title">Vega (per 1%)
                         <details class="beta-help"><summary class="dashboard-help-bubble">i</summary>
                         <div class="beta-help-panel"><strong>Vega</strong><br>Estimated option-price change from a 1% implied-volatility move.</div>
-                        </details></div><div class="greek-value">{vega:.4f}</div></div>
+                        </details></div><div class="greek-value">{display_vega:.4f}</div></div>
                         """, unsafe_allow_html=True)
                     
                     st.markdown("---")
@@ -3116,14 +3144,23 @@ with tab1:
                     # less than one cent.  Showing "$0.00" makes that look like a
                     # broken calculation, so make the tiny value explicit.
                     if option_price < 0.005:
-                        st.metric("Option Price", "< $0.01")
+                        fair_value_display = "< $0.01"
+                        st.markdown(
+                            f'<div class="greek-card"><div class="greek-title">Option Price</div>'
+                            f'<div class="greek-value">{fair_value_display}</div></div>',
+                            unsafe_allow_html=True,
+                        )
                         st.caption(
                             "The model estimates this contract is worth less than a penny. "
                             "This usually means the strike is far from the current stock price "
                             "or there is very little time remaining."
                         )
                     else:
-                        st.metric("Option Price", format_currency(option_price))
+                        st.markdown(
+                            f'<div class="greek-card"><div class="greek-title">Option Price</div>'
+                            f'<div class="greek-value">{format_currency(option_price)}</div></div>',
+                            unsafe_allow_html=True,
+                        )
                     
                     # PROBABILITY CALCULATOR
                     st.markdown("---")
