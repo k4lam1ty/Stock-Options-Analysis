@@ -1405,6 +1405,23 @@ def safe_news_url(value):
         return "#"
 
 
+def get_original_article_url(article):
+    """Prefer the publisher's URL over Yahoo's aggregator page when supplied."""
+    content = article.get('content') or {}
+    candidates = []
+    for key in ('clickThroughUrl', 'canonicalUrl', 'url'):
+        value = content.get(key) if isinstance(content, dict) else None
+        if isinstance(value, dict):
+            value = value.get('url')
+        candidates.append(value)
+    candidates.extend([article.get('url'), article.get('link')])
+    for candidate in candidates:
+        link = safe_news_url(candidate)
+        if link != '#':
+            return link
+    return '#'
+
+
 @st.cache_data(ttl=900, show_spinner=False)
 def get_high_quality_news(ticker, max_articles=50):
     news_items = []
@@ -1428,8 +1445,8 @@ def get_high_quality_news(ticker, max_articles=50):
                 if 'seeking alpha' in publisher:
                     continue
                 title = article.get('title', '')
-                link = article.get('link', '')
-                if link and not link.startswith('http'):
+                link = get_original_article_url(article)
+                if link != '#' and not link.startswith('http'):
                     link = f"https://finance.yahoo.com{link}"
                 importance = 50
                 if 'bloomberg' in publisher:
@@ -1511,8 +1528,8 @@ def get_catalyst_news(ticker, max_articles=15):
         if yf_news:
             for article in yf_news[:max_articles]:
                 title = article.get('title', '')
-                link = article.get('link', '')
-                if link and not link.startswith('http'):
+                link = get_original_article_url(article)
+                if link != '#' and not link.startswith('http'):
                     link = f"https://finance.yahoo.com{link}"
                 catalyst_keywords = ['earnings', 'acquisition', 'merger', 'ceo', 'lawsuit', 'fda', 'approval', 
                                      'bankruptcy', 'stock split', 'dividend', 'buyback', 'guidance', 
@@ -2028,7 +2045,9 @@ def detect_catalysts(ticker, info):
     for article in catalyst_news:
         title = article['title']
         link = article.get('link', '#')
-        source = article.get('source', 'News')
+        # Show the actual publisher (Reuters, CNBC, etc.), not merely the
+        # aggregator that supplied the headline.
+        source = article.get('publisher') or article.get('source', 'News')
         title_lower = title.lower()
         bull_keywords = ['upgrade', 'outperform', 'overweight', 'buyback', 'beat estimates',
                          'earnings beat', 'raised guidance', 'guidance raise', 'record revenue',
@@ -2837,7 +2856,7 @@ with tab1:
                         """, unsafe_allow_html=True)
                 else:
                     st.info("No significant bear catalysts detected")
-            st.caption("💡 Click any catalyst link for more details.")
+            st.caption("💡 Click a news catalyst to open the original publisher's article. Analyst and consensus catalysts open Yahoo's supporting data page.")
             st.markdown("---")
             
             # TRADINGVIEW CHART
