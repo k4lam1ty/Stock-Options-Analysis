@@ -458,11 +458,29 @@ st.markdown("""
         font-size: 0.9rem;
         font-weight: 600;
     }
-    .forecast-label .beta-help-panel {
+.forecast-label .beta-help-panel {
         top: 24px;
         bottom: auto;
         right: auto;
         left: 0;
+    }
+
+    /* These cards use Streamlit's live `color-scheme` value.  Unlike the
+       server-side theme option, it changes immediately when a visitor picks
+       Light or Dark in Streamlit's Settings menu. */
+    [data-testid="stAppViewContainer"] .greek-card {
+        background-color: light-dark(#ffffff, #0e1117) !important;
+        border-color: light-dark(#d8dee8, #374151) !important;
+        color: light-dark(#111827, #f8fafc) !important;
+    }
+    [data-testid="stAppViewContainer"] .greek-card .greek-title,
+    [data-testid="stAppViewContainer"] .forecast-label {
+        color: light-dark(#111827, #f8fafc) !important;
+    }
+    [data-testid="stAppViewContainer"] .beta-help-panel {
+        background-color: light-dark(#ffffff, #0e1117) !important;
+        border-color: light-dark(#d8dee8, #374151) !important;
+        color: light-dark(#111827, #f8fafc) !important;
     }
 
     /* Final responsive pass.  Streamlit renders the same Python layout for
@@ -745,6 +763,12 @@ def install_page_navigation_helpers():
             // Probe the visible page directly beside the tab bar.  This is more
             // reliable than a wrapper's stale color after a Streamlit theme change.
             const getVisiblePageIsLight = () => {
+                // Streamlit updates `color-scheme` immediately when the visitor
+                // chooses Light/Dark in Settings, even if Python has not rerun.
+                const appContainer = doc.querySelector('[data-testid="stAppViewContainer"]');
+                const liveColorScheme = appContainer ? appWindow.getComputedStyle(appContainer).colorScheme : '';
+                if (liveColorScheme === 'light') return true;
+                if (liveColorScheme === 'dark') return false;
                 const tabList = doc.querySelector('[data-testid="stTabs"] [role="tablist"], [data-testid="stTabs"] [data-baseweb="tab-list"]');
                 if (tabList) {
                     const rect = tabList.getBoundingClientRect();
