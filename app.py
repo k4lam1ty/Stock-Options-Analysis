@@ -494,7 +494,95 @@ def format_local_date(dt=None):
 # ============================================================
 
 if 'watchlist' not in st.session_state:
-    st.session_state.watchlist = ['AAPL', 'MSFT', 'SPY', 'QQQ']
+    st.session_state.watchlist = []
+
+# ============================================================
+# ACCOUNT SIGN-IN (SUPABASE)
+# ============================================================
+
+def get_supabase_client():
+    """Create a fresh Supabase client for this visitor's Streamlit session."""
+    try:
+        from supabase import create_client
+        supabase_url = st.secrets["SUPABASE_URL"]
+        supabase_key = st.secrets["SUPABASE_KEY"]
+    except Exception as exc:
+        st.error("The account connection is not set up yet. Check the app's Streamlit Secrets.")
+        st.stop()
+
+    client = create_client(supabase_url, supabase_key)
+    tokens = st.session_state.get("supabase_tokens")
+    if tokens:
+        try:
+            client.auth.set_session(tokens["access_token"], tokens["refresh_token"])
+        except Exception:
+            st.session_state.pop("supabase_tokens", None)
+            st.session_state.pop("account_email", None)
+    return client
+
+
+def save_login_session(auth_session, email):
+    st.session_state.supabase_tokens = {
+        "access_token": auth_session.access_token,
+        "refresh_token": auth_session.refresh_token,
+    }
+    st.session_state.account_email = email
+    st.session_state.pop("watchlist_loaded_for", None)
+
+
+def show_login_screen(auth_client):
+    """Show the only screen visitors see until they sign in."""
+    st.title("📈 Stock Analysis Dashboard")
+    st.subheader("Sign in to use your personal watchlist")
+    st.caption("Each account gets its own saved tickers.")
+    sign_in_tab, sign_up_tab = st.tabs(["Sign in", "Create account"])
+
+    with sign_in_tab:
+        with st.form("sign_in_form"):
+            email = st.text_input("Email", key="login_email")
+            password = st.text_input("Password", type="password", key="login_password")
+            submit_login = st.form_submit_button("Sign in", use_container_width=True)
+        if submit_login:
+            if not email or not password:
+                st.error("Enter both your email and password.")
+            else:
+                try:
+                    response = auth_client.auth.sign_in_with_password({"email": email, "password": password})
+                    if response.session:
+                        save_login_session(response.session, response.user.email)
+                        st.rerun()
+                    st.error("Sign-in did not return a session. Please try again.")
+                except Exception:
+                    st.error("That email or password was not accepted.")
+
+    with sign_up_tab:
+        with st.form("sign_up_form"):
+            email = st.text_input("Email", key="signup_email")
+            password = st.text_input("Password (at least 8 characters)", type="password", key="signup_password")
+            confirm_password = st.text_input("Confirm password", type="password", key="signup_confirm_password")
+            submit_signup = st.form_submit_button("Create account", use_container_width=True)
+        if submit_signup:
+            if not email or not password:
+                st.error("Enter an email and password.")
+            elif len(password) < 8:
+                st.error("Use a password with at least 8 characters.")
+            elif password != confirm_password:
+                st.error("Those passwords do not match.")
+            else:
+                try:
+                    response = auth_client.auth.sign_up({"email": email, "password": password})
+                    if response.session:
+                        save_login_session(response.session, response.user.email)
+                        st.rerun()
+                    st.success("Account created. Check your email for the confirmation link, then return here and sign in.")
+                except Exception as exc:
+                    st.error(f"Could not create the account: {str(exc)}")
+
+
+supabase = get_supabase_client()
+if "supabase_tokens" not in st.session_state:
+    show_login_screen(supabase)
+    st.stop()
 
 # ============================================================
 # FORMATTING FUNCTIONS
@@ -1600,7 +1688,25 @@ def detect_catalysts(ticker, info):
 # WATCHLIST FUNCTIONS
 # ============================================================
 
+def load_watchlist_from_account():
+    """Load only the signed-in person's saved tickers (RLS enforces this too)."""
+    try:
+        response = supabase.table("watchlist_items").select("ticker").order("created_at").execute()
+        st.session_state.watchlist = [row["ticker"] for row in (response.data or [])]
+        st.session_state.watchlist_loaded_for = st.session_state.get("account_email")
+        return True
+    except Exception as exc:
+        st.error(f"Could not load your watchlist: {str(exc)}")
+        return False
+
+
+def ensure_watchlist_loaded():
+    if st.session_state.get("watchlist_loaded_for") != st.session_state.get("account_email"):
+        load_watchlist_from_account()
+
+
 def add_to_watchlist(ticker):
+    ensure_watchlist_loaded()
     if not ticker or ticker == '':
         return False, "No ticker entered"
     ticker = ticker.upper()
@@ -1609,14 +1715,40 @@ def add_to_watchlist(ticker):
     with st.spinner(f"Validating {ticker}..."):
         is_valid = validate_ticker(ticker)
     if is_valid:
-        st.session_state.watchlist.append(ticker)
-        return True, f"Added {ticker} to watchlist"
+        try:
+            supabase.table("watchlist_items").insert({"ticker": ticker}).execute()
+            st.session_state.watchlist.append(ticker)
+            return True, f"Added {ticker} to your watchlist"
+        except Exception as exc:
+            if "duplicate" in str(exc).lower():
+                return False, f"{ticker} is already in your watchlist"
+            return False, f"Could not save {ticker}: {str(exc)}"
     else:
         return False, f"Invalid ticker: {ticker}. Please check the symbol."
 
 def remove_from_watchlist(ticker):
     if ticker in st.session_state.watchlist:
-        st.session_state.watchlist.remove(ticker)
+        try:
+            supabase.table("watchlist_items").delete().eq("ticker", ticker).execute()
+            st.session_state.watchlist.remove(ticker)
+            return True
+        except Exception as exc:
+            st.error(f"Could not remove {ticker}: {str(exc)}")
+    return False
+
+
+def clear_watchlist():
+    try:
+        # The table policy limits this deletion to the current account's rows.
+        supabase.table("watchlist_items").delete().gt("id", 0).execute()
+        st.session_state.watchlist = []
+        return True
+    except Exception as exc:
+        st.error(f"Could not clear your watchlist: {str(exc)}")
+        return False
+
+
+ensure_watchlist_loaded()
 
 # ============================================================
 # OPTIONS CALCULATION
@@ -1662,6 +1794,17 @@ GREEK_DESCRIPTIONS = {
 # ============================================================
 
 with st.sidebar:
+    st.caption(f"Signed in as: **{st.session_state.get('account_email', '')}**")
+    if st.button("Sign out", key="sign_out", use_container_width=True):
+        try:
+            supabase.auth.sign_out()
+        except Exception:
+            pass
+        for key in ("supabase_tokens", "account_email", "watchlist_loaded_for", "watchlist"):
+            st.session_state.pop(key, None)
+        st.rerun()
+    st.markdown("---")
+
     # Streamlit's own Settings menu controls the app appearance.
     # This app-level selector was removed to avoid competing theme controls.
     theme = "Light" if st.get_option("theme.base") != "dark" else "Dark"
@@ -2616,9 +2759,9 @@ with tab2:
     
     if clear_button:
         if st.session_state.watchlist:
-            st.session_state.watchlist = []
-            st.success("Watchlist cleared")
-            st.rerun()
+            if clear_watchlist():
+                st.success("Watchlist cleared")
+                st.rerun()
     
     st.markdown("---")
     
@@ -2670,8 +2813,8 @@ with tab2:
         
         for invalid in invalid_tickers:
             if invalid in st.session_state.watchlist:
-                st.session_state.watchlist.remove(invalid)
-                st.warning(f"Removed invalid ticker: {invalid}")
+                if remove_from_watchlist(invalid):
+                    st.warning(f"Removed invalid ticker: {invalid}")
         
         if watchlist_data:
             for item in watchlist_data:
