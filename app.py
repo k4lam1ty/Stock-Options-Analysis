@@ -310,18 +310,7 @@ st.markdown("""
         letter-spacing: 0.3px !important;
     }
     
-    /* Remove button styling for watchlist */
-    button[kind="secondary"], .stButton button[data-testid="baseButton-secondary"] {
-        background: linear-gradient(135deg, #dc3545 0%, #c82333 100%) !important;
-        color: white !important;
-        border: none !important;
-        font-weight: bold !important;
-    }
-    
-    button[kind="secondary"]:hover {
-        background: linear-gradient(135deg, #c82333 0%, #a71d2a 100%) !important;
-        transform: scale(1.05) !important;
-    }
+    /* Buttons use Streamlit's built-in light and dark theme colors. */
     
     /* Rounded expanders */
     .streamlit-expanderHeader {
@@ -579,6 +568,29 @@ def install_page_navigation_helpers():
             setTimeout(paintTabs, 350);
             setTimeout(paintTabs, 1000);
 
+            // Keep the small watchlist remove controls crisp instead of rendering
+            // the multiplication symbol as an emoji on some browsers.
+            const paintRemoveButtons = () => {
+                doc.querySelectorAll('button').forEach((removeButton) => {
+                    if (removeButton.textContent.trim() !== '×') return;
+                    removeButton.style.setProperty('min-width', '2rem', 'important');
+                    removeButton.style.setProperty('width', '2rem', 'important');
+                    removeButton.style.setProperty('height', '2rem', 'important');
+                    removeButton.style.setProperty('padding', '0', 'important');
+                    removeButton.style.setProperty('border-radius', '8px', 'important');
+                    removeButton.style.setProperty('border', `1px solid ${isLight ? '#cbd5e1' : '#4b5563'}`, 'important');
+                    removeButton.style.setProperty('background-color', 'transparent', 'important');
+                    removeButton.style.setProperty('color', isLight ? '#111827' : '#f8fafc', 'important');
+                    removeButton.style.setProperty('font-size', '1.35rem', 'important');
+                    removeButton.style.setProperty('font-weight', '500', 'important');
+                    removeButton.style.setProperty('line-height', '1', 'important');
+                    removeButton.style.setProperty('box-shadow', 'none', 'important');
+                });
+            };
+            paintRemoveButtons();
+            setTimeout(paintRemoveButtons, 350);
+            setTimeout(paintRemoveButtons, 1000);
+
             if (!doc.getElementById('dashboard-top-button-style')) {
                 const style = doc.createElement('style');
                 style.id = 'dashboard-top-button-style';
@@ -590,9 +602,9 @@ def install_page_navigation_helpers():
                         border: 1px solid var(--dashboard-sticky-border, #374151);
                         background: var(--dashboard-sticky-rail, #1b2430);
                         color: var(--dashboard-control-text, #f8fafc); font: 600 14px sans-serif; cursor: pointer;
-                        box-shadow: 0 10px 26px rgba(0,0,0,.25);
+                        box-shadow: 0 3px 8px rgba(0,0,0,.16);
                     }
-                    #dashboard-back-to-top:hover { transform: translateY(-2px); filter: brightness(1.12); }
+                    #dashboard-back-to-top:hover { transform: translateY(-1px); filter: brightness(1.12); box-shadow: 0 5px 12px rgba(0,0,0,.20); }
                 `;
                 doc.head.appendChild(style);
             }
@@ -3204,7 +3216,7 @@ with tab2:
                     else:
                         st.write(item['Earnings'])
                 with col6:
-                    if st.button("✖️", key=f"remove_{item['Ticker']}", help=f"Remove {item['Ticker']}"):
+                    if st.button("×", key=f"remove_{item['Ticker']}", help=f"Remove {item['Ticker']}"):
                         remove_from_watchlist(item['Ticker'])
                         st.rerun()
     else:
