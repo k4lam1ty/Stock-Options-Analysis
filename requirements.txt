@@ -2,12 +2,9 @@ streamlit
 yfinance
 pandas
 numpy
-plotly
 scipy
+requests
 feedparser
 beautifulsoup4
-requests
 pytz
-redis
-defeatbeta-api
-fmpy
+supabase
