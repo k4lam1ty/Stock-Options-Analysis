@@ -512,6 +512,33 @@ def format_local_date(dt=None):
         dt = get_local_time()
     return dt.strftime('%A, %B %d, %Y')
 
+
+def scroll_to_page_top():
+    """Smoothly return the Streamlit page to the top from a normal button."""
+    st.components.v1.html("""
+    <script>
+    setTimeout(() => {
+        try {
+            const doc = window.parent.document;
+            const targets = [
+                window.parent,
+                doc.documentElement,
+                doc.body,
+                doc.querySelector('[data-testid="stAppViewContainer"]'),
+                doc.querySelector('section.main')
+            ];
+            targets.forEach((target) => {
+                if (target && typeof target.scrollTo === 'function') {
+                    target.scrollTo({ top: 0, behavior: 'smooth' });
+                }
+            });
+        } catch (error) {
+            window.scrollTo({ top: 0, behavior: 'smooth' });
+        }
+    }, 80);
+    </script>
+    """, height=0, width=0)
+
 # ============================================================
 # SESSION STATE
 # ============================================================
@@ -1844,6 +1871,8 @@ GREEK_DESCRIPTIONS = {
 
 with st.sidebar:
     st.caption(f"Signed in as: **{st.session_state.get('account_email', '')}**")
+    if st.button("↑ Back to top", key="back_to_top", use_container_width=True, help="Smoothly return to the top of the dashboard"):
+        scroll_to_page_top()
     if st.button("Sign out", key="sign_out", use_container_width=True):
         try:
             supabase.auth.sign_out()
@@ -2049,13 +2078,21 @@ st.markdown("""
 div[data-testid="stTabs"] div[data-baseweb="tab-list"],
 .stTabs > div > div > div > div[role="tablist"] {
     position: sticky !important;
-    top: 0 !important;
-    z-index: 9999 !important;
-    background-color: transparent !important;
-    padding-top: 10px !important;
-    padding-bottom: 10px !important;
+    top: 3.1rem !important;
+    z-index: 900 !important;
+    background-color: var(--background-color) !important;
+    padding-top: 0.65rem !important;
+    padding-bottom: 0.65rem !important;
     margin-bottom: 0 !important;
     gap: 8px !important;
+    box-shadow: 0 8px 14px -14px rgba(0, 0, 0, 0.9) !important;
+}
+/* Streamlit has used both of these tab-list structures across releases. */
+div[data-testid="stTabs"] [role="tablist"] {
+    position: sticky !important;
+    top: 3.1rem !important;
+    z-index: 900 !important;
+    background-color: var(--background-color) !important;
 }
 .stTabs [data-baseweb="tab-panel"] {
     padding-top: 20px !important;
