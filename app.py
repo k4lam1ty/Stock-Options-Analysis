@@ -681,6 +681,35 @@ def format_volume(value):
     else:
         return f"{value:,.0f}"
 
+
+def get_quote_metric(info, keys, history=None, history_column=None, aggregation="latest"):
+    """Prefer Yahoo's live quote value, then use price history as a fallback."""
+    for key in keys:
+        value = (info or {}).get(key)
+        try:
+            if value is not None and not pd.isna(value) and float(value) > 0:
+                return float(value)
+        except (TypeError, ValueError):
+            continue
+
+    if history is not None and not history.empty and history_column in history.columns:
+        series = history[history_column].dropna()
+        if not series.empty:
+            if aggregation == "max":
+                return float(series.max())
+            if aggregation == "min":
+                return float(series.min())
+            return float(series.iloc[-1])
+    return None
+
+
+def display_currency_metric(value):
+    return format_currency(value) if value is not None and value > 0 else "N/A"
+
+
+def display_volume_metric(value):
+    return format_volume(value) if value is not None and value > 0 else "N/A"
+
 # ============================================================
 # TICKER VALIDATION
 # ============================================================
@@ -1482,6 +1511,17 @@ def get_stock_data(ticker):
             current_price = get_current_price(ticker_data)
             hist = ticker_data.history(period='1y')
             company_name = get_company_name(ticker_data)
+            try:
+                info = ticker_data.info or {}
+            except Exception:
+                info = {}
+
+        # Keep the full quote dictionary.  The dashboard needs more than the
+        # company name for day range, 52-week range, and volume cards.
+        if not info:
+            info = {}
+        if not info.get('longName'):
+            info = {**info, 'longName': company_name}
         
         # For financials, defeatbeta-api may have limitations
         # You may need to keep yfinance for balance sheet data
@@ -1504,7 +1544,7 @@ def get_stock_data(ticker):
             cashflow = pd.DataFrame()
         
         return {
-            'info': {'longName': company_name},  # Simplified info dict
+            'info': info,
             'hist': hist,
             'price': current_price,
             'balance_sheet': balance_sheet,
@@ -2121,11 +2161,40 @@ div[data-testid="stTabs"] [role="tablist"] {
 # ============================================================
 st.markdown("""
 <style>
-/* Final tab styling: this comes after all legacy tab rules. */
-button[data-baseweb="tab"] { color: var(--text-color) !important; opacity: .62 !important; border-bottom: 0 !important; }
-button[data-baseweb="tab"][aria-selected="true"] { color: var(--text-color) !important; opacity: 1 !important; font-weight: 700 !important; border-bottom: 0 !important; }
-div[data-baseweb="tab-list"], div[role="tablist"] { border-bottom: 0 !important; }
-div[data-baseweb="tab-highlight"] { background: var(--primary-color) !important; height: 3px !important; }
+/* Solid floating navigation bar for the sticky dashboard tabs. */
+div[data-testid="stTabs"] div[data-baseweb="tab-list"],
+div[data-testid="stTabs"] div[role="tablist"] {
+    width: 100% !important;
+    box-sizing: border-box !important;
+    background-color: var(--secondary-background-color) !important;
+    border: 1px solid rgba(128, 128, 128, 0.32) !important;
+    border-radius: 14px !important;
+    padding: 0.35rem !important;
+    gap: 0.25rem !important;
+    box-shadow: 0 10px 22px -16px rgba(0, 0, 0, 0.85) !important;
+    overflow: hidden !important;
+}
+div[data-testid="stTabs"] button[data-baseweb="tab"] {
+    color: var(--text-color) !important;
+    opacity: 0.72 !important;
+    border: 0 !important;
+    border-radius: 10px !important;
+    padding: 0.55rem 0.8rem !important;
+    transition: background-color 140ms ease, color 140ms ease !important;
+}
+div[data-testid="stTabs"] button[data-baseweb="tab"]:hover {
+    background-color: rgba(128, 128, 128, 0.18) !important;
+    opacity: 1 !important;
+}
+div[data-testid="stTabs"] button[data-baseweb="tab"][aria-selected="true"] {
+    background-color: var(--primary-color) !important;
+    color: #ffffff !important;
+    opacity: 1 !important;
+    font-weight: 700 !important;
+}
+div[data-testid="stTabs"] div[data-baseweb="tab-highlight"] {
+    display: none !important;
+}
 </style>
 """, unsafe_allow_html=True)
 
@@ -2203,7 +2272,7 @@ with tab1:
                 dividend_yield = get_dividend_yield(ticker)
                 
                 # Calculate additional metrics
-                previous_close = info.get('previousClose', current_price)
+                previous_close = info.get('regularMarketPreviousClose', info.get('previousClose', current_price))
                 price_change = current_price - previous_close
                 price_change_pct = (price_change / previous_close * 100) if previous_close else 0
                 
@@ -2239,6 +2308,22 @@ with tab1:
                 st.error(f"Cannot get valid price for {ticker}")
                 st.info("Try using the manual price entry above or refresh the page.")
                 st.stop()
+
+            day_high = get_quote_metric(
+                info, ["dayHigh", "regularMarketDayHigh"], hist, "High"
+            )
+            day_low = get_quote_metric(
+                info, ["dayLow", "regularMarketDayLow"], hist, "Low"
+            )
+            year_high = get_quote_metric(
+                info, ["fiftyTwoWeekHigh"], hist, "High", aggregation="max"
+            )
+            year_low = get_quote_metric(
+                info, ["fiftyTwoWeekLow"], hist, "Low", aggregation="min"
+            )
+            volume = get_quote_metric(
+                info, ["regularMarketVolume", "volume"], hist, "Volume"
+            )
             
             # Display header
             st.subheader(f"📊 {ticker} - {info.get('longName', ticker) if info else ticker} ({asset_type})")
@@ -2248,15 +2333,15 @@ with tab1:
             with col1:
                 st.metric("Current Price", format_currency(current_price), delta=f"{price_change:+.2f} ({price_change_pct:+.1f}%)")
             with col2:
-                st.metric("Day High", format_currency(info.get('dayHigh', 0) if info else 0))
+                st.metric("Day High", display_currency_metric(day_high))
             with col3:
-                st.metric("Day Low", format_currency(info.get('dayLow', 0) if info else 0))
+                st.metric("Day Low", display_currency_metric(day_low))
             with col4:
-                st.metric("52-Week High", format_currency(info.get('fiftyTwoWeekHigh', 0) if info else 0))
+                st.metric("52-Week High", display_currency_metric(year_high))
             with col5:
-                st.metric("52-Week Low", format_currency(info.get('fiftyTwoWeekLow', 0) if info else 0))
+                st.metric("52-Week Low", display_currency_metric(year_low))
             with col6:
-                st.metric("Volume", format_volume(info.get('volume', 0) if info else 0))
+                st.metric("Volume", display_volume_metric(volume))
             st.markdown("---")
             
             # Key metrics row
