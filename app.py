@@ -536,12 +536,12 @@ def install_page_navigation_helpers():
                 return (Number(rgb[0]) * 299 + Number(rgb[1]) * 587 + Number(rgb[2]) * 114) / 1000;
             };
             const themeElements = [
-                doc.querySelector('[data-testid="stHeader"]'),
                 doc.querySelector('section.main'),
                 doc.querySelector('[data-testid="stAppViewContainer"]'),
                 doc.querySelector('.stApp'),
                 doc.body,
                 doc.documentElement,
+                doc.querySelector('[data-testid="stHeader"]'),
             ].filter(Boolean);
             let brightness = null;
             for (const element of themeElements) {
@@ -555,6 +555,28 @@ def install_page_navigation_helpers():
             root.style.setProperty('--dashboard-sticky-border', isLight ? '#d8dee8' : '#374151');
             root.style.setProperty('--dashboard-control-text', isLight ? '#111827' : '#f8fafc');
             root.style.setProperty('--dashboard-tab-text', isLight ? '#1f2937' : '#f8fafc');
+
+            const paintTabs = () => {
+                const rail = isLight ? '#ffffff' : '#0e1117';
+                const bar = isLight ? '#f3f5f8' : '#1b2430';
+                const border = isLight ? '#d8dee8' : '#374151';
+                const text = isLight ? '#1f2937' : '#f8fafc';
+                const tabLists = doc.querySelectorAll('[data-testid="stTabs"] [role="tablist"], [data-testid="stTabs"] [data-baseweb="tab-list"]');
+                tabLists.forEach((list) => {
+                    list.style.setProperty('background-color', bar, 'important');
+                    list.style.setProperty('border-color', border, 'important');
+                    list.style.setProperty('box-shadow', `0 10px 22px -16px ${rail}`, 'important');
+                    list.querySelectorAll('[role="tab"], [data-baseweb="tab"]').forEach((tab) => {
+                        const active = tab.getAttribute('aria-selected') === 'true';
+                        tab.style.setProperty('color', active ? '#ffffff' : text, 'important');
+                        tab.style.setProperty('background-color', active ? '#ff4b4b' : 'transparent', 'important');
+                        tab.querySelectorAll('*').forEach((child) => child.style.setProperty('color', active ? '#ffffff' : text, 'important'));
+                    });
+                });
+            };
+            paintTabs();
+            setTimeout(paintTabs, 350);
+            setTimeout(paintTabs, 1000);
 
             if (!doc.getElementById('dashboard-top-button-style')) {
                 const style = doc.createElement('style');
@@ -582,13 +604,15 @@ def install_page_navigation_helpers():
                 button.setAttribute('aria-label', 'Back to top');
                 button.innerHTML = '↑ <span>Back to top</span>';
                 button.addEventListener('click', () => {
-                    const preferred = [
-                        doc.querySelector('section.main'),
-                        doc.querySelector('[data-testid="stAppViewContainer"]'),
-                        doc.querySelector('.main')
-                    ];
-                    const target = preferred.find((item) => item && item.scrollHeight > item.clientHeight) || doc.scrollingElement;
-                    target.scrollTo({ top: 0, behavior: 'smooth' });
+                    const mainScrollers = Array.from(doc.querySelectorAll('*'))
+                        .filter((item) => {
+                            const style = window.parent.getComputedStyle(item);
+                            const canScroll = ['auto', 'scroll'].includes(style.overflowY) && item.scrollHeight > item.clientHeight;
+                            return canScroll && !item.closest('[data-testid="stSidebar"]');
+                        });
+                    mainScrollers.forEach((item) => item.scrollTo({ top: 0, behavior: 'smooth' }));
+                    if (doc.scrollingElement) doc.scrollingElement.scrollTo({ top: 0, behavior: 'smooth' });
+                    window.parent.scrollTo({ top: 0, behavior: 'smooth' });
                 });
                 doc.body.appendChild(button);
             }
@@ -2258,11 +2282,17 @@ div[data-testid="stTabs"] [data-baseweb="tab"] {
     padding: 0.55rem 0.8rem !important;
     transition: background-color 140ms ease, color 140ms ease !important;
 }
+div[data-testid="stTabs"] [role="tab"] {
+    color: var(--dashboard-tab-text, #f8fafc) !important;
+}
 div[data-testid="stTabs"] [data-baseweb="tab"]:hover {
     background-color: rgba(128, 128, 128, 0.18) !important;
     opacity: 1 !important;
 }
 div[data-testid="stTabs"] [data-baseweb="tab"] * {
+    color: var(--dashboard-tab-text, #f8fafc) !important;
+}
+div[data-testid="stTabs"] [role="tab"] * {
     color: var(--dashboard-tab-text, #f8fafc) !important;
 }
 div[data-testid="stTabs"] [data-baseweb="tab"][aria-selected="true"] {
@@ -2272,6 +2302,10 @@ div[data-testid="stTabs"] [data-baseweb="tab"][aria-selected="true"] {
     font-weight: 700 !important;
 }
 div[data-testid="stTabs"] [data-baseweb="tab"][aria-selected="true"] * {
+    color: #ffffff !important;
+}
+div[data-testid="stTabs"] [role="tab"][aria-selected="true"],
+div[data-testid="stTabs"] [role="tab"][aria-selected="true"] * {
     color: #ffffff !important;
 }
 div[data-testid="stTabs"] [data-baseweb="tab-highlight"] {
