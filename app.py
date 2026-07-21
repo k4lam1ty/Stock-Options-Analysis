@@ -597,6 +597,17 @@ def get_cached_stock_info(ticker):
         return {}
 
 @st.cache_data(ttl=300, show_spinner=False)
+def get_cached_fast_info(ticker):
+    """Get quote/range/volume fields without relying on Yahoo's full profile call."""
+    try:
+        request_queue.wait_if_needed()
+        raw = yf.Ticker(ticker).fast_info
+        return dict(raw) if raw is not None else {}
+    except Exception as exc:
+        logger.debug("Could not load fast quote data for %s: %s", ticker, exc)
+        return {}
+
+@st.cache_data(ttl=300, show_spinner=False)
 def get_cached_earnings_dates(ticker):
     """Fetch Yahoo's earnings schedule once for both upcoming and past EPS."""
     try:
@@ -1991,6 +2002,26 @@ def get_stock_data(ticker):
             # Ticker.info/history directly here used to bypass the cache on every rerun.
             info = get_cached_stock_info(ticker)
             hist = get_cached_stock_history(ticker, '1y')
+            # `info` is Yahoo's heaviest endpoint and is often the first one
+            # temporarily limited.  `fast_info` can still provide the quote,
+            # range, volume, and market-cap fields used by the dashboard.
+            fast_info = get_cached_fast_info(ticker)
+            fast_field_map = {
+                'lastPrice': 'regularMarketPrice',
+                'dayHigh': 'dayHigh',
+                'dayLow': 'dayLow',
+                'yearHigh': 'fiftyTwoWeekHigh',
+                'yearLow': 'fiftyTwoWeekLow',
+                'lastVolume': 'volume',
+                'tenDayAverageVolume': 'averageVolume',
+                'marketCap': 'marketCap',
+            }
+            fast_fallback = {
+                target: fast_info[source]
+                for source, target in fast_field_map.items()
+                if source in fast_info and fast_info[source] is not None and not pd.isna(fast_info[source])
+            }
+            info = {**fast_fallback, **info}
             current_price = info.get('regularMarketPrice', info.get('currentPrice', 0))
             # Yahoo sometimes rate-limits its quote endpoint while its historical
             # endpoint still works.  Use the most recent close as a sensible
@@ -2839,6 +2870,18 @@ with tab1:
                 income_statement = data['income_statement']
                 cashflow = data['cashflow']
                 is_index_ticker = data['is_index']
+
+                # Keep the most complete profile already retrieved during this
+                # browser session.  A temporary Yahoo profile limit should not
+                # replace good company facts with empty values on the next rerun.
+                profile_cache_key = f"last_good_profile_{ticker.upper()}"
+                saved_profile = st.session_state.get(profile_cache_key, {})
+                profile_fields = ('sector', 'industry', 'country', 'marketCap', 'beta', 'trailingPE')
+                if any(info.get(field) not in (None, 0, '') for field in profile_fields):
+                    st.session_state[profile_cache_key] = {**saved_profile, **info}
+                elif saved_profile:
+                    info = {**saved_profile, **info}
+
                 dividend_yield = get_dividend_yield(ticker)
                 
                 # Calculate additional metrics
@@ -3141,9 +3184,12 @@ with tab1:
                     st.write(f"**Industry:** {info.get('industry', 'N/A')}")
                 st.write(f"**Country:** {info.get('country', 'N/A') if info else 'N/A'}")
                 st.write(f"**Asset Type:** {asset_type}")
-                st.write(f"**Volume:** {format_volume(info.get('volume', 0) if info else 0)}")
-                st.write(f"**Avg Volume:** {format_volume(info.get('averageVolume', 0) if info else 0)}")
-                st.write(f"**Market Cap:** {format_large_number(info.get('marketCap', 0) if info else 0)}")
+                volume = info.get('volume') if info else None
+                average_volume = info.get('averageVolume') if info else None
+                market_cap = info.get('marketCap') if info else None
+                st.write(f"**Volume:** {format_volume(volume) if volume else 'N/A'}")
+                st.write(f"**Avg Volume:** {format_volume(average_volume) if average_volume else 'N/A'}")
+                st.write(f"**Market Cap:** {format_large_number(market_cap) if market_cap else 'N/A'}")
             with col2:
                 st.subheader("📈 Key Metrics")
                 if not is_index_ticker and info:
