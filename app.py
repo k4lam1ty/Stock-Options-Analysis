@@ -521,15 +521,40 @@ def install_page_navigation_helpers():
         try {
             const doc = window.parent.document;
             const root = doc.documentElement;
-            const app = doc.querySelector('[data-testid="stAppViewContainer"]') || doc.querySelector('.stApp');
-            const background = window.parent.getComputedStyle(app || doc.body).backgroundColor;
-            const rgb = background.match(/[0-9.]+/g) || ["14", "17", "23"];
-            const brightness = (Number(rgb[0]) * 299 + Number(rgb[1]) * 587 + Number(rgb[2]) * 114) / 1000;
-            const isLight = brightness > 150;
+            const colorBrightness = (value) => {
+                if (!value || value === 'transparent') return null;
+                if (value.startsWith('#')) {
+                    let hex = value.slice(1);
+                    if (hex.length === 3) hex = hex.split('').map((part) => part + part).join('');
+                    if (hex.length >= 6) {
+                        const rgb = [parseInt(hex.slice(0, 2), 16), parseInt(hex.slice(2, 4), 16), parseInt(hex.slice(4, 6), 16)];
+                        return (rgb[0] * 299 + rgb[1] * 587 + rgb[2] * 114) / 1000;
+                    }
+                }
+                const rgb = value.match(/[0-9.]+/g);
+                if (!rgb || rgb.length < 3 || (value.startsWith('rgba') && Number(rgb[3] || 1) === 0)) return null;
+                return (Number(rgb[0]) * 299 + Number(rgb[1]) * 587 + Number(rgb[2]) * 114) / 1000;
+            };
+            const themeElements = [
+                doc.querySelector('[data-testid="stHeader"]'),
+                doc.querySelector('section.main'),
+                doc.querySelector('[data-testid="stAppViewContainer"]'),
+                doc.querySelector('.stApp'),
+                doc.body,
+                doc.documentElement,
+            ].filter(Boolean);
+            let brightness = null;
+            for (const element of themeElements) {
+                const styles = window.parent.getComputedStyle(element);
+                brightness = colorBrightness(styles.getPropertyValue('--background-color').trim()) ?? colorBrightness(styles.backgroundColor);
+                if (brightness !== null) break;
+            }
+            const isLight = brightness !== null ? brightness > 150 : false;
             root.style.setProperty('--dashboard-sticky-bg', isLight ? '#ffffff' : '#0e1117');
             root.style.setProperty('--dashboard-sticky-rail', isLight ? '#f3f5f8' : '#1b2430');
             root.style.setProperty('--dashboard-sticky-border', isLight ? '#d8dee8' : '#374151');
             root.style.setProperty('--dashboard-control-text', isLight ? '#111827' : '#f8fafc');
+            root.style.setProperty('--dashboard-tab-text', isLight ? '#1f2937' : '#f8fafc');
 
             if (!doc.getElementById('dashboard-top-button-style')) {
                 const style = doc.createElement('style');
@@ -2226,7 +2251,7 @@ div[data-testid="stTabs"] div[role="tablist"] {
     overflow: hidden !important;
 }
 div[data-testid="stTabs"] [data-baseweb="tab"] {
-    color: var(--text-color) !important;
+    color: var(--dashboard-tab-text, #f8fafc) !important;
     opacity: 0.72 !important;
     border: 0 !important;
     border-radius: 10px !important;
@@ -2237,11 +2262,17 @@ div[data-testid="stTabs"] [data-baseweb="tab"]:hover {
     background-color: rgba(128, 128, 128, 0.18) !important;
     opacity: 1 !important;
 }
+div[data-testid="stTabs"] [data-baseweb="tab"] * {
+    color: var(--dashboard-tab-text, #f8fafc) !important;
+}
 div[data-testid="stTabs"] [data-baseweb="tab"][aria-selected="true"] {
     background-color: var(--primary-color) !important;
     color: #ffffff !important;
     opacity: 1 !important;
     font-weight: 700 !important;
+}
+div[data-testid="stTabs"] [data-baseweb="tab"][aria-selected="true"] * {
+    color: #ffffff !important;
 }
 div[data-testid="stTabs"] [data-baseweb="tab-highlight"] {
     display: none !important;
@@ -2715,15 +2746,9 @@ with tab1:
                     "Current Ratio": f"{current_ratio:.2f}",
                 }
                 df = pd.DataFrame(list(financials.items()), columns=["Metric", "Value"])
-                # Give this short table exactly enough height for every row so
-                # users never have to use a tiny internal scrollbar for one value.
-                financial_table_height = 38 * (len(df) + 1) + 8
-                st.dataframe(
-                    df,
-                    use_container_width=True,
-                    hide_index=True,
-                    height=financial_table_height,
-                )
+                # A static table fits its contents exactly—no excess blank area,
+                # no toolbar, and no internal scrollbar.
+                st.table(df.set_index("Metric"))
                 st.markdown("---")
             
             # OPTIONS CALCULATOR
