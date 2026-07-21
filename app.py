@@ -428,9 +428,9 @@ st.markdown("""
     .greek-card {
         min-height: 80px;
         padding: 0.8rem;
-        border: 1px solid rgba(128, 128, 128, .28);
+        border: 1px solid var(--dashboard-option-card-border, #d8dee8);
         border-radius: 16px;
-        background: var(--secondary-background-color, #1f2937);
+        background: var(--dashboard-option-card-bg, #ffffff);
     }
     .greek-title {
         color: var(--text-color, #f8fafc);
@@ -710,6 +710,8 @@ def install_page_navigation_helpers():
             root.style.setProperty('--dashboard-sticky-border', isLight ? '#d8dee8' : '#374151');
             root.style.setProperty('--dashboard-control-text', isLight ? '#111827' : '#f8fafc');
             root.style.setProperty('--dashboard-tab-text', isLight ? '#1f2937' : '#f8fafc');
+            root.style.setProperty('--dashboard-option-card-bg', isLight ? '#ffffff' : '#0e1117');
+            root.style.setProperty('--dashboard-option-card-border', isLight ? '#d8dee8' : '#374151');
 
             const paintTabs = () => {
                 const rail = isLight ? '#ffffff' : '#0e1117';
@@ -3446,15 +3448,20 @@ with tab1:
                                     st.metric("Stop Price", format_currency(stop_price))
 
                                 if planned_contracts > 0:
+                                    stop_display = format_currency(stop_price).replace("$", "\\$")
+                                    planned_loss_display = format_currency(planned_loss_at_stop).replace("$", "\\$")
+                                    worst_case_display = format_currency(worst_case_loss).replace("$", "\\$")
                                     st.info(
-                                        f"Plan: {planned_contracts} contract(s). If the stop fills at {format_currency(stop_price)}, "
-                                        f"the estimated loss is {format_currency(planned_loss_at_stop)}. "
-                                        f"If the option falls to zero or gaps through the stop, the loss could be as high as {format_currency(worst_case_loss)}."
+                                        f"Plan: {planned_contracts} contract(s). If the stop fills at {stop_display}, "
+                                        f"the estimated loss is {planned_loss_display}. "
+                                        f"If the option falls to zero or gaps through the stop, the loss could be as high as {worst_case_display}."
                                     )
                                 else:
+                                    contract_cost_display = format_currency(option_cost).replace("$", "\\$")
+                                    risk_per_contract_display = format_currency(risk_per_contract).replace("$", "\\$")
                                     st.warning(
-                                        f"No whole contract fits this plan. One contract costs {format_currency(option_cost)} and risks "
-                                        f"about {format_currency(risk_per_contract)} at your selected stop."
+                                        f"No whole contract fits this plan. One contract costs {contract_cost_display} and risks "
+                                        f"about {risk_per_contract_display} at your selected stop."
                                     )
                             else:
                                 st.info("Enter the option's actual market price above to calculate a position size.")
