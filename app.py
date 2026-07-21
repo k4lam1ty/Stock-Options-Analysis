@@ -568,11 +568,11 @@ def install_page_navigation_helpers():
             setTimeout(paintTabs, 350);
             setTimeout(paintTabs, 1000);
 
-            // Keep the small watchlist remove controls crisp instead of rendering
-            // the multiplication symbol as an emoji on some browsers.
+            // Use a plain ASCII X so every browser renders the watchlist control
+            // consistently instead of treating it like an emoji.
             const paintRemoveButtons = () => {
                 doc.querySelectorAll('button').forEach((removeButton) => {
-                    if (removeButton.textContent.trim() !== '×') return;
+                    if (removeButton.textContent.trim() !== 'X') return;
                     removeButton.style.setProperty('min-width', '2rem', 'important');
                     removeButton.style.setProperty('width', '2rem', 'important');
                     removeButton.style.setProperty('height', '2rem', 'important');
@@ -2177,37 +2177,6 @@ with st.sidebar:
         fill: var(--dashboard-control-text, #f8fafc) !important;
         -webkit-text-fill-color: var(--dashboard-control-text, #f8fafc) !important;
     }
-    /* Rebuild Streamlit's help icon as an outlined question mark.  This avoids
-       the invisible white-question-on-white-circle problem in dark mode. */
-    [data-testid="stTooltipIcon"],
-    button[aria-label*="help" i] {
-        width: 17px !important;
-        height: 17px !important;
-        min-width: 17px !important;
-        box-sizing: border-box !important;
-        display: inline-flex !important;
-        align-items: center !important;
-        justify-content: center !important;
-        background: transparent !important;
-        border: 1.5px solid var(--dashboard-control-text, #f8fafc) !important;
-        border-radius: 50% !important;
-        color: transparent !important;
-        position: relative !important;
-        padding: 0 !important;
-    }
-    [data-testid="stTooltipIcon"] svg,
-    button[aria-label*="help" i] svg {
-        display: none !important;
-    }
-    [data-testid="stTooltipIcon"]::after,
-    button[aria-label*="help" i]::after {
-        content: "?" !important;
-        color: var(--dashboard-control-text, #f8fafc) !important;
-        font-family: Arial, sans-serif !important;
-        font-size: 11px !important;
-        font-weight: 700 !important;
-        line-height: 1 !important;
-    }
     </style>
     """, unsafe_allow_html=True)
     st.markdown("---")
@@ -2858,21 +2827,13 @@ with tab1:
                     
                     col1, col2, col3, col4 = st.columns(4)
                     with col1:
-                        st.metric("Delta", f"{delta:.4f}")
-                        with st.expander("ℹ️ What is Delta?", expanded=False):
-                            st.write(GREEK_DESCRIPTIONS['Delta'])
+                        st.metric("Delta", f"{delta:.4f}", help=GREEK_DESCRIPTIONS['Delta'])
                     with col2:
-                        st.metric("Gamma", f"{gamma:.4f}")
-                        with st.expander("ℹ️ What is Gamma?", expanded=False):
-                            st.write(GREEK_DESCRIPTIONS['Gamma'])
+                        st.metric("Gamma", f"{gamma:.4f}", help=GREEK_DESCRIPTIONS['Gamma'])
                     with col3:
-                        st.metric("Theta (Daily)", f"{theta/365:.4f}")
-                        with st.expander("ℹ️ What is Theta?", expanded=False):
-                            st.write(GREEK_DESCRIPTIONS['Theta'])
+                        st.metric("Theta (Daily)", f"{theta/365:.4f}", help=GREEK_DESCRIPTIONS['Theta'])
                     with col4:
-                        st.metric("Vega (per 1%)", f"{vega:.4f}")
-                        with st.expander("ℹ️ What is Vega?", expanded=False):
-                            st.write(GREEK_DESCRIPTIONS['Vega'])
+                        st.metric("Vega (per 1%)", f"{vega:.4f}", help=GREEK_DESCRIPTIONS['Vega'])
                     
                     st.markdown("---")
                     st.subheader("📈 Theoretical Fair Value")
@@ -3216,7 +3177,7 @@ with tab2:
                     else:
                         st.write(item['Earnings'])
                 with col6:
-                    if st.button("×", key=f"remove_{item['Ticker']}", help=f"Remove {item['Ticker']}"):
+                    if st.button("X", key=f"remove_{item['Ticker']}", help=f"Remove {item['Ticker']}"):
                         remove_from_watchlist(item['Ticker'])
                         st.rerun()
     else:
