@@ -1604,6 +1604,23 @@ def get_stock_data(ticker):
             info = get_cached_stock_info(ticker)
             hist = get_cached_stock_history(ticker, '1y')
             current_price = info.get('regularMarketPrice', info.get('currentPrice', 0))
+            # Yahoo sometimes rate-limits its quote endpoint while its historical
+            # endpoint still works.  Use the most recent close as a sensible
+            # fallback so a temporary missing quote does not blank the dashboard.
+            try:
+                has_live_quote = pd.notna(current_price) and float(current_price) > 0
+            except (TypeError, ValueError):
+                has_live_quote = False
+            if not has_live_quote:
+                current_price = 0
+            if not has_live_quote and hist is not None and not hist.empty and 'Close' in hist.columns:
+                try:
+                    latest_close = hist['Close']
+                    if isinstance(latest_close, pd.DataFrame):
+                        latest_close = latest_close.iloc[:, 0]
+                    current_price = float(latest_close.dropna().iloc[-1])
+                except Exception:
+                    current_price = 0
             company_name = info.get('longName', ticker)
         else:
             ticker_data = get_ticker_data(ticker)
@@ -1650,7 +1667,11 @@ def get_stock_data(ticker):
             'income_statement': income_statement,
             'cashflow': cashflow,
             'is_index': is_index_ticker,
-            'success': current_price is not None and current_price > 0
+            'success': current_price is not None and current_price > 0,
+            'error': '' if current_price is not None and current_price > 0 else (
+                'Yahoo Finance did not return a current quote. It may be temporarily rate-limited; '
+                'wait a few minutes or enter a manual price below.'
+            ),
         }
         
     except Exception as e:
