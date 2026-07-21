@@ -3282,12 +3282,17 @@ with tab1:
                                         upside = ((intrinsic_value - current_price) / current_price * 100) if current_price > 0 else 0
                                         st.metric("Upside to Fair Value", f"{upside:+.1f}%")
                                     
+                                    # Escape dollar signs because Streamlit's
+                                    # Markdown renderer otherwise treats the
+                                    # text between them as a math expression.
+                                    current_display = format_currency(current_price).replace("$", "\\$")
+                                    fair_display = format_currency(intrinsic_value).replace("$", "\\$")
                                     if intrinsic_value > current_price * 1.2:
-                                        st.success(f"✅ Stock appears UNDERVALUED (Current: {format_currency(current_price)} vs Fair: {format_currency(intrinsic_value)})")
+                                        st.success(f"✅ Stock appears UNDERVALUED (Current: {current_display} vs Fair: {fair_display})")
                                     elif intrinsic_value < current_price * 0.8:
-                                        st.error(f"⚠️ Stock appears OVERVALUED (Current: {format_currency(current_price)} vs Fair: {format_currency(intrinsic_value)})")
+                                        st.error(f"⚠️ Stock appears OVERVALUED (Current: {current_display} vs Fair: {fair_display})")
                                     else:
-                                        st.info(f"📊 Stock appears FAIRLY VALUED (Current: {format_currency(current_price)} vs Fair: {format_currency(intrinsic_value)})")
+                                        st.info(f"📊 Stock appears FAIRLY VALUED (Current: {current_display} vs Fair: {fair_display})")
                                 else:
                                     st.warning("Shares outstanding data not available")
                             else:
