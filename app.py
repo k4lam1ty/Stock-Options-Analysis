@@ -714,16 +714,38 @@ def install_page_navigation_helpers():
                     if (brightness !== null) break;
                 }
             }
-            const isLight = brightness !== null ? brightness > 150 : false;
-            root.style.setProperty('--dashboard-sticky-bg', isLight ? '#ffffff' : '#0e1117');
-            root.style.setProperty('--dashboard-sticky-rail', isLight ? '#ffffff' : '#0e1117');
-            root.style.setProperty('--dashboard-sticky-border', isLight ? '#d8dee8' : '#374151');
-            root.style.setProperty('--dashboard-control-text', isLight ? '#111827' : '#f8fafc');
-            root.style.setProperty('--dashboard-tab-text', isLight ? '#1f2937' : '#f8fafc');
-            root.style.setProperty('--dashboard-option-card-bg', isLight ? '#ffffff' : '#0e1117');
-            root.style.setProperty('--dashboard-option-card-border', isLight ? '#d8dee8' : '#374151');
+            const initialIsLight = brightness !== null ? brightness > 150 : false;
+            const applyThemeColors = (isLight) => {
+                root.style.setProperty('--dashboard-sticky-bg', isLight ? '#ffffff' : '#0e1117');
+                root.style.setProperty('--dashboard-sticky-rail', isLight ? '#ffffff' : '#0e1117');
+                root.style.setProperty('--dashboard-sticky-border', isLight ? '#d8dee8' : '#374151');
+                root.style.setProperty('--dashboard-control-text', isLight ? '#111827' : '#f8fafc');
+                root.style.setProperty('--dashboard-tab-text', isLight ? '#1f2937' : '#f8fafc');
+                root.style.setProperty('--dashboard-option-card-bg', isLight ? '#ffffff' : '#0e1117');
+                root.style.setProperty('--dashboard-option-card-border', isLight ? '#d8dee8' : '#374151');
+            };
+            // Probe the visible page directly beside the tab bar.  This is more
+            // reliable than a wrapper's stale color after a Streamlit theme change.
+            const getVisiblePageIsLight = () => {
+                const tabList = doc.querySelector('[data-testid="stTabs"] [role="tablist"], [data-testid="stTabs"] [data-baseweb="tab-list"]');
+                if (tabList) {
+                    const rect = tabList.getBoundingClientRect();
+                    const probeX = Math.min(doc.documentElement.clientWidth - 2, Math.ceil(rect.right + 12));
+                    const probeY = Math.max(2, Math.ceil(rect.top + rect.height / 2));
+                    let probe = doc.elementFromPoint(probeX, probeY);
+                    while (probe && probe !== doc.body) {
+                        const visibleBrightness = colorBrightness(window.parent.getComputedStyle(probe).backgroundColor);
+                        if (visibleBrightness !== null) return visibleBrightness > 150;
+                        probe = probe.parentElement;
+                    }
+                }
+                return initialIsLight;
+            };
+            applyThemeColors(initialIsLight);
 
             const paintTabs = () => {
+                const isLight = getVisiblePageIsLight();
+                applyThemeColors(isLight);
                 const rail = isLight ? '#ffffff' : '#0e1117';
                 const bar = rail;
                 const border = isLight ? '#d8dee8' : '#374151';
@@ -749,6 +771,8 @@ def install_page_navigation_helpers():
             // Forecast labels and custom option cards are HTML rendered by the
             // app, so paint them directly from the visitor's live appearance.
             const paintCustomThemeElements = () => {
+                const isLight = getVisiblePageIsLight();
+                applyThemeColors(isLight);
                 const text = isLight ? '#111827' : '#f8fafc';
                 const card = isLight ? '#ffffff' : '#0e1117';
                 const border = isLight ? '#d8dee8' : '#374151';
@@ -1770,13 +1794,38 @@ def tradingview_full_chart(ticker, timeframe="D", theme="dark"):
         function appIsUsingLightTheme() {{
             try {{
                 const parentDoc = window.parent.document;
-                const appRoot = parentDoc.querySelector('[data-testid="stAppViewContainer"]') ||
-                                parentDoc.querySelector('.stApp') || parentDoc.body;
-                const background = window.parent.getComputedStyle(appRoot).backgroundColor;
-                const rgb = background.match(/[0-9.]+/g);
-                if (!rgb || rgb.length < 3) return false;
-                const brightness = (Number(rgb[0]) * 299 + Number(rgb[1]) * 587 + Number(rgb[2]) * 114) / 1000;
-                return brightness > 150;
+                const brightnessOf = (color) => {{
+                    if ((color || '').startsWith('#')) {{
+                        let hex = color.slice(1);
+                        if (hex.length === 3) hex = hex.split('').map((part) => part + part).join('');
+                        if (hex.length >= 6) {{
+                            const rgb = [parseInt(hex.slice(0, 2), 16), parseInt(hex.slice(2, 4), 16), parseInt(hex.slice(4, 6), 16)];
+                            return (rgb[0] * 299 + rgb[1] * 587 + rgb[2] * 114) / 1000;
+                        }}
+                    }}
+                    const values = (color || '').match(/[0-9.]+/g);
+                    if (!values || values.length < 3 || (color.startsWith('rgba') && Number(values[3] || 1) === 0)) return null;
+                    return (Number(values[0]) * 299 + Number(values[1]) * 587 + Number(values[2]) * 114) / 1000;
+                }};
+                // Look immediately above this embedded chart.  That samples the
+                // visible Streamlit page, not a wrapper with stale theme CSS.
+                const frame = window.frameElement;
+                if (frame) {{
+                    const rect = frame.getBoundingClientRect();
+                    let probe = parentDoc.elementFromPoint(Math.max(2, rect.left + 8), Math.max(2, rect.top - 8));
+                    while (probe && probe !== parentDoc.body) {{
+                        const brightness = brightnessOf(window.parent.getComputedStyle(probe).backgroundColor);
+                        if (brightness !== null) return brightness > 150;
+                        probe = probe.parentElement;
+                    }}
+                }}
+                const rail = window.parent.getComputedStyle(parentDoc.documentElement)
+                    .getPropertyValue('--dashboard-sticky-rail').trim();
+                const railBrightness = brightnessOf(rail);
+                if (railBrightness !== null) return railBrightness > 150;
+                const appRoot = parentDoc.querySelector('section.main') || parentDoc.querySelector('[data-testid="stMain"]') || parentDoc.body;
+                const fallbackBrightness = brightnessOf(window.parent.getComputedStyle(appRoot).backgroundColor);
+                return fallbackBrightness !== null ? fallbackBrightness > 150 : false;
             }} catch (error) {{
                 return false;
             }}
