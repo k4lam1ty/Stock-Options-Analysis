@@ -3395,35 +3395,69 @@ with tab1:
                         
                         # Position Size Calculator
                         with st.expander("💰 Position Size Calculator", expanded=False):
-                            st.write("**Risk Management**")
-                            account_size = st.number_input("Account Size ($):", value=10000, step=1000, key="account_size", format="%d")
-                            risk_percent = st.number_input("Risk Per Trade (%):", value=2.0, step=0.5, key="risk_percent")
+                            st.write("**Position planning**")
+                            st.caption("Sizes long-option positions from your planned stop loss, then caps the result by available cash. It is an estimate, not investment advice.")
+                            account_col1, account_col2, account_col3 = st.columns(3)
+                            with account_col1:
+                                account_size = st.number_input("Account Size ($)", value=10000.0, min_value=0.0, step=1000.0, key="account_size", format="%.2f")
+                            with account_col2:
+                                risk_percent = st.number_input("Risk Per Trade (%)", value=2.0, min_value=0.1, max_value=100.0, step=0.5, key="risk_percent")
+                            with account_col3:
+                                contract_multiplier = st.number_input("Contract Multiplier", value=100, min_value=1, step=1, key="contract_multiplier")
+
+                            position_stop_pct = st.number_input(
+                                "Position Stop-Loss (%)",
+                                value=float(stop_loss_pct), min_value=0.1, max_value=100.0, step=1.0,
+                                key="position_stop_loss",
+                            )
                             max_risk = account_size * (risk_percent / 100)
-                            st.metric("Max Risk per Trade", format_currency(max_risk))
-                            
+
                             if market_price_input and market_price_input > 0:
-                                option_cost = market_price_input * 100
-                                max_contracts = int(max_risk / option_cost) if option_cost > 0 else 0
-                                col1, col2, col3 = st.columns(3)
-                                with col1:
-                                    st.metric("Option Cost per Contract", format_currency(option_cost))
-                                with col2:
-                                    st.metric("Max Contracts (by risk)", max_contracts)
-                                with col3:
-                                    st.metric("Total Risk", format_currency(max_contracts * option_cost))
+                                entry_price = market_price_input
+                                stop_price = entry_price * (1 - position_stop_pct / 100)
+                                option_cost = entry_price * contract_multiplier
+                                risk_per_contract = (entry_price - stop_price) * contract_multiplier
+                                contracts_by_risk = int(max_risk // risk_per_contract) if risk_per_contract > 0 else 0
+                                contracts_by_cash = int(account_size // option_cost) if option_cost > 0 else 0
+                                planned_contracts = min(contracts_by_risk, contracts_by_cash)
+                                position_cost = planned_contracts * option_cost
+                                planned_loss_at_stop = planned_contracts * risk_per_contract
+                                worst_case_loss = planned_contracts * option_cost
+
+                                result_col1, result_col2, result_col3, result_col4 = st.columns(4)
+                                with result_col1:
+                                    st.metric("Risk Budget", format_currency(max_risk))
+                                with result_col2:
+                                    st.metric("Risk per Contract at Stop", format_currency(risk_per_contract))
+                                with result_col3:
+                                    st.metric("Contracts (Risk Limit)", contracts_by_risk)
+                                with result_col4:
+                                    st.metric("Contracts (Cash Limit)", contracts_by_cash)
+
                                 st.markdown("---")
-                                if max_contracts > 0:
-                                    suggested_contracts = min(max_contracts, 10)
-                                    if max_contracts > 10:
-                                        st.info(f"📊 Based on risk management, you could buy up to **{max_contracts} contracts**, but consider starting with **{suggested_contracts} contracts** for better risk control.")
-                                    elif max_contracts >= 5:
-                                        st.success(f"✅ Recommended position: **{max_contracts} contract(s)**")
-                                    else:
-                                        st.warning(f"⚠️ Account size limits you to **{max_contracts} contract(s)**")
+                                summary_col1, summary_col2, summary_col3, summary_col4 = st.columns(4)
+                                with summary_col1:
+                                    st.metric("Planned Contracts", planned_contracts)
+                                with summary_col2:
+                                    st.metric("Position Cost", format_currency(position_cost))
+                                with summary_col3:
+                                    st.metric("Loss at Stop", format_currency(planned_loss_at_stop))
+                                with summary_col4:
+                                    st.metric("Stop Price", format_currency(stop_price))
+
+                                if planned_contracts > 0:
+                                    st.info(
+                                        f"Plan: {planned_contracts} contract(s). If the stop fills at {format_currency(stop_price)}, "
+                                        f"the estimated loss is {format_currency(planned_loss_at_stop)}. "
+                                        f"If the option falls to zero or gaps through the stop, the loss could be as high as {format_currency(worst_case_loss)}."
+                                    )
                                 else:
-                                    st.warning(f"⚠️ Account too small for 1 contract. Minimum required: {format_currency(option_cost)}")
+                                    st.warning(
+                                        f"No whole contract fits this plan. One contract costs {format_currency(option_cost)} and risks "
+                                        f"about {format_currency(risk_per_contract)} at your selected stop."
+                                    )
                             else:
-                                st.info("📝 Enter the option market price above to calculate position size")
+                                st.info("Enter the option's actual market price above to calculate a position size.")
                     else:
                         st.info("📝 Enter the actual option market price to get a trading recommendation")
             else:
