@@ -2177,6 +2177,20 @@ with st.sidebar:
         fill: var(--dashboard-control-text, #f8fafc) !important;
         -webkit-text-fill-color: var(--dashboard-control-text, #f8fafc) !important;
     }
+    /* Buttons must follow the visitor's current Streamlit appearance.  The
+       earlier server-side palette can be stale after the visitor switches
+       between Light and Dark mode from the Streamlit menu. */
+    .stButton > button,
+    .stFormSubmitButton > button {
+        background-color: var(--secondary-background-color) !important;
+        color: var(--text-color) !important;
+        border: 1px solid rgba(128, 128, 128, 0.45) !important;
+    }
+    .stButton > button:hover,
+    .stFormSubmitButton > button:hover {
+        background-color: var(--background-color) !important;
+        border-color: var(--primary-color) !important;
+    }
     </style>
     """, unsafe_allow_html=True)
     st.markdown("---")
