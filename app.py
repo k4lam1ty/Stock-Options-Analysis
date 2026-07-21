@@ -1371,12 +1371,7 @@ def get_implied_volatility_for_strike(ticker, strike, expiration_date, option_ty
 # ============================================================
 
 def tradingview_full_chart(ticker, timeframe="D", theme="dark"):
-    """Render the embedded chart in a consistently readable dark style."""
-    # Streamlit's browser-only appearance setting is not available to this
-    # Python code.  A dark chart avoids a bright panel inside the dark app.
-    chart_theme = "dark"
-    toolbar_background = "#ffffff" if chart_theme == "light" else "#1e293b"
-    loading_background = "#f8fafc" if chart_theme == "light" else "#1e1e2e"
+    """Render a chart that automatically follows Streamlit's active appearance."""
     chart_symbol = json.dumps(str(ticker).upper())
     chart_interval = json.dumps(str(timeframe))
     chart_html = f"""
@@ -1384,17 +1379,35 @@ def tradingview_full_chart(ticker, timeframe="D", theme="dark"):
         <div id="tradingview_full_chart"></div>
         <script src="https://s3.tradingview.com/tv.js"></script>
         <script>
+        function appIsUsingLightTheme() {{
+            try {{
+                const parentDoc = window.parent.document;
+                const appRoot = parentDoc.querySelector('[data-testid="stAppViewContainer"]') ||
+                                parentDoc.querySelector('.stApp') || parentDoc.body;
+                const background = window.parent.getComputedStyle(appRoot).backgroundColor;
+                const rgb = background.match(/[0-9.]+/g);
+                if (!rgb || rgb.length < 3) return false;
+                const brightness = (Number(rgb[0]) * 299 + Number(rgb[1]) * 587 + Number(rgb[2]) * 114) / 1000;
+                return brightness > 150;
+            }} catch (error) {{
+                return false;
+            }}
+        }}
+        const useLightTheme = appIsUsingLightTheme();
+        const chartTheme = useLightTheme ? "light" : "dark";
+        const toolbarBackground = useLightTheme ? "#ffffff" : "#1e293b";
+        const loadingBackground = useLightTheme ? "#f8fafc" : "#1e1e2e";
         new TradingView.widget({{
             "width": "100%", "height": 700, "symbol": {chart_symbol},
             "interval": {chart_interval}, "timezone": "America/Chicago",
-            "theme": "{chart_theme}", "style": "1", "locale": "en",
-            "toolbar_bg": "{toolbar_background}", "enable_publishing": true,
+            "theme": chartTheme, "style": "1", "locale": "en",
+            "toolbar_bg": toolbarBackground, "enable_publishing": true,
             "allow_symbol_change": true, "save_image": true, "calendar": true,
             "container_id": "tradingview_full_chart",
             "studies": ["RSI@tv-basicstudies", "MACD@tv-basicstudies"],
             "withdateranges": true, "hide_side_toolbar": false,
             "show_popup_button": true, "popup_width": "1000", "popup_height": "650",
-            "loading_screen": {{ "backgroundColor": "{loading_background}" }}
+            "loading_screen": {{ "backgroundColor": loadingBackground }}
         }});
         </script>
     </div>
