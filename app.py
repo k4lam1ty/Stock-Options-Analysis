@@ -413,7 +413,7 @@ st.markdown("""
         border: 1px solid rgba(128, 128, 128, .45);
         border-radius: 10px;
         background: var(--secondary-background-color, #1f2937);
-        color: var(--text-color, #f8fafc);
+        color: var(--dashboard-control-text, #111827) !important;
         font-size: 0.82rem;
         font-weight: 400;
         line-height: 1.35;
@@ -699,10 +699,20 @@ def install_page_navigation_helpers():
                 doc.querySelector('[data-testid="stHeader"]'),
             ].filter(Boolean);
             let brightness = null;
+            // Prefer the rendered background first.  A transparent wrapper can
+            // inherit an old server-side CSS variable after the visitor changes
+            // Streamlit's appearance, even though the visible page is light.
             for (const element of themeElements) {
                 const styles = window.parent.getComputedStyle(element);
-                brightness = colorBrightness(styles.backgroundColor) ?? colorBrightness(styles.getPropertyValue('--background-color').trim());
+                brightness = colorBrightness(styles.backgroundColor);
                 if (brightness !== null) break;
+            }
+            if (brightness === null) {
+                for (const element of themeElements) {
+                    const styles = window.parent.getComputedStyle(element);
+                    brightness = colorBrightness(styles.getPropertyValue('--background-color').trim());
+                    if (brightness !== null) break;
+                }
             }
             const isLight = brightness !== null ? brightness > 150 : false;
             root.style.setProperty('--dashboard-sticky-bg', isLight ? '#ffffff' : '#0e1117');
@@ -735,6 +745,30 @@ def install_page_navigation_helpers():
             paintTabs();
             setTimeout(paintTabs, 350);
             setTimeout(paintTabs, 1000);
+
+            // Forecast labels and custom option cards are HTML rendered by the
+            // app, so paint them directly from the visitor's live appearance.
+            const paintCustomThemeElements = () => {
+                const text = isLight ? '#111827' : '#f8fafc';
+                const card = isLight ? '#ffffff' : '#0e1117';
+                const border = isLight ? '#d8dee8' : '#374151';
+                doc.querySelectorAll('.forecast-label, .greek-title, .beta-line').forEach((element) => {
+                    element.style.setProperty('color', text, 'important');
+                    element.querySelectorAll(':scope > :not(.beta-help)').forEach((child) => child.style.setProperty('color', text, 'important'));
+                });
+                doc.querySelectorAll('.greek-card').forEach((element) => {
+                    element.style.setProperty('background-color', card, 'important');
+                    element.style.setProperty('border-color', border, 'important');
+                });
+                doc.querySelectorAll('.beta-help-panel').forEach((element) => {
+                    element.style.setProperty('background-color', card, 'important');
+                    element.style.setProperty('color', text, 'important');
+                    element.style.setProperty('border-color', border, 'important');
+                });
+            };
+            paintCustomThemeElements();
+            setTimeout(paintCustomThemeElements, 350);
+            setTimeout(paintCustomThemeElements, 1000);
 
             // Use a plain ASCII X so every browser renders the watchlist control
             // consistently instead of treating it like an emoji.
