@@ -13,6 +13,11 @@ import json
 import os
 import pytz
 import re
+import html
+import logging
+from urllib.parse import urlparse
+
+logger = logging.getLogger(__name__)
 
 # ============================================================
 # REQUEST QUEUE FOR RATE LIMITING
@@ -47,6 +52,10 @@ class RequestQueue:
 # Yahoo's unofficial endpoints are sensitive to bursts.  One request per second
 # is intentionally conservative; the caches below keep normal use responsive.
 request_queue = RequestQueue(max_requests_per_second=1)
+
+MAX_WATCHLIST_TICKERS = 15
+DEFAULT_NEWS_ARTICLES = 20
+MAX_NEWS_ARTICLES = 50
 
 # ============================================================
 # SET USER-AGENT TO AVOID BLOCKING
@@ -418,57 +427,71 @@ def track_request():
 @st.cache_data(ttl=300, show_spinner=False)
 def get_cached_stock_info(ticker):
     try:
+        request_queue.wait_if_needed()
         stock = yf.Ticker(ticker)
         return stock.info
-    except:
+    except Exception as exc:
+        logger.debug("Could not load stock info for %s: %s", ticker, exc)
         return {}
 
 @st.cache_data(ttl=300, show_spinner=False)
 def get_cached_stock_history(ticker, period='1y'):
     try:
+        request_queue.wait_if_needed()
         stock = yf.Ticker(ticker)
         return stock.history(period=period)
-    except:
+    except Exception as exc:
+        logger.debug("Could not load price history for %s: %s", ticker, exc)
         return pd.DataFrame()
 
 @st.cache_data(ttl=300, show_spinner=False)
 def get_cached_balance_sheet(ticker):
     try:
+        request_queue.wait_if_needed()
         stock = yf.Ticker(ticker)
         return stock.balance_sheet
-    except:
+    except Exception as exc:
+        logger.debug("Could not load balance sheet for %s: %s", ticker, exc)
         return pd.DataFrame()
 
 @st.cache_data(ttl=300, show_spinner=False)
 def get_cached_financials(ticker):
     try:
+        request_queue.wait_if_needed()
         stock = yf.Ticker(ticker)
         return stock.financials
-    except:
+    except Exception as exc:
+        logger.debug("Could not load financials for %s: %s", ticker, exc)
         return pd.DataFrame()
 
 @st.cache_data(ttl=300, show_spinner=False)
 def get_cached_cashflow(ticker):
     try:
+        request_queue.wait_if_needed()
         stock = yf.Ticker(ticker)
         return stock.cashflow
-    except:
+    except Exception as exc:
+        logger.debug("Could not load cash flow for %s: %s", ticker, exc)
         return pd.DataFrame()
 
 @st.cache_data(ttl=300, show_spinner=False)
 def get_cached_options(ticker):
     try:
+        request_queue.wait_if_needed()
         stock = yf.Ticker(ticker)
         return stock.options
-    except:
+    except Exception as exc:
+        logger.debug("Could not load options expirations for %s: %s", ticker, exc)
         return []
 
 @st.cache_data(ttl=300, show_spinner=False)
 def get_cached_option_chain(ticker, expiration):
     try:
+        request_queue.wait_if_needed()
         stock = yf.Ticker(ticker)
         return stock.option_chain(expiration)
-    except:
+    except Exception as exc:
+        logger.debug("Could not load option chain for %s: %s", ticker, exc)
         return None
 
 # ============================================================
@@ -504,9 +527,13 @@ def get_supabase_client():
     """Create a fresh Supabase client for this visitor's Streamlit session."""
     try:
         from supabase import create_client
+    except ImportError:
+        st.error("The app is missing the Supabase package. Confirm that requirements.txt was updated.")
+        st.stop()
+    try:
         supabase_url = st.secrets["SUPABASE_URL"]
         supabase_key = st.secrets["SUPABASE_KEY"]
-    except Exception as exc:
+    except KeyError:
         st.error("The account connection is not set up yet. Check the app's Streamlit Secrets.")
         st.stop()
 
@@ -634,17 +661,17 @@ def format_volume(value):
 def validate_ticker(ticker):
     """Check if ticker is valid before loading full data"""
     try:
-        stock = yf.Ticker(ticker)
-        # Try to get basic info - this is a lightweight call
-        info = stock.info
+        # Reuse the shared cache and rate limiter instead of adding a new burst.
+        info = get_cached_stock_info(ticker)
         if info.get('regularMarketPrice') or info.get('currentPrice'):
             return True
         # Try history as fallback
-        hist = stock.history(period='1d')
+        hist = get_cached_stock_history(ticker, period='1d')
         if not hist.empty and hist['Close'].iloc[-1] > 0:
             return True
         return False
-    except:
+    except Exception as exc:
+        logger.debug("Ticker validation failed for %s: %s", ticker, exc)
         return False
 
 # ============================================================
@@ -1077,6 +1104,15 @@ def get_earnings_history_with_numbers(ticker):
 # NEWS FUNCTIONS
 # ============================================================
 
+def safe_news_url(value):
+    """Only allow normal web links in externally sourced news cards."""
+    try:
+        parsed = urlparse(str(value))
+        return str(value) if parsed.scheme in {"http", "https"} and parsed.netloc else "#"
+    except Exception:
+        return "#"
+
+
 @st.cache_data(ttl=900, show_spinner=False)
 def get_high_quality_news(ticker, max_articles=50):
     news_items = []
@@ -1091,6 +1127,7 @@ def get_high_quality_news(ticker, max_articles=50):
         return min(100, base_score + 30 * sum(word in text for word in high_impact)
                    + 12 * sum(word in text for word in medium_impact))
     try:
+        request_queue.wait_if_needed()
         stock = yf.Ticker(ticker)
         yf_news = stock.news
         if yf_news:
@@ -1120,8 +1157,8 @@ def get_high_quality_news(ticker, max_articles=50):
                     'source': 'Yahoo Finance',
                     'importance': importance
                 })
-    except:
-        pass
+    except Exception as exc:
+        logger.debug("Yahoo news request failed for %s: %s", ticker, exc)
     try:
         search_term = ticker
         google_url = f"https://news.google.com/rss/search?q={search_term}+stock&hl=en-US&gl=US&ceid=US:en"
@@ -1160,8 +1197,8 @@ def get_high_quality_news(ticker, max_articles=50):
                 'source': 'Google News',
                 'importance': importance
             })
-    except:
-        pass
+    except Exception as exc:
+        logger.debug("Google News request failed for %s: %s", ticker, exc)
     seen_titles = set()
     unique_news = []
     for item in news_items:
@@ -1176,6 +1213,7 @@ def get_high_quality_news(ticker, max_articles=50):
 def get_catalyst_news(ticker, max_articles=15):
     catalyst_items = []
     try:
+        request_queue.wait_if_needed()
         stock = yf.Ticker(ticker)
         yf_news = stock.news
         if yf_news:
@@ -1196,8 +1234,8 @@ def get_catalyst_news(ticker, max_articles=15):
                         'date': article.get('providerPublishTime', None),
                         'source': 'Yahoo Finance'
                     })
-    except:
-        pass
+    except Exception as exc:
+        logger.debug("Yahoo catalyst request failed for %s: %s", ticker, exc)
     try:
         search_term = f"{ticker} earnings OR acquisition OR merger OR upgrade OR downgrade OR lawsuit"
         google_url = f"https://news.google.com/rss/search?q={search_term}&hl=en-US&gl=US&ceid=US:en"
@@ -1213,8 +1251,8 @@ def get_catalyst_news(ticker, max_articles=15):
                 'date': None,
                 'source': 'Google News'
             })
-    except:
-        pass
+    except Exception as exc:
+        logger.debug("Google catalyst request failed for %s: %s", ticker, exc)
     seen_titles = set()
     unique_items = []
     for item in catalyst_items:
@@ -1464,18 +1502,8 @@ def get_price_from_fallback(ticker):
     except:
         pass
     
-    # Fallback 2: Common stock prices dictionary (for major tickers)
-    common_prices = {
-        'AAPL': 175.00, 'MSFT': 420.00, 'GOOGL': 150.00, 'AMZN': 180.00,
-        'TSLA': 240.00, 'META': 500.00, 'NVDA': 900.00, 'SPY': 520.00,
-        'QQQ': 450.00, 'DIA': 390.00, 'IWM': 210.00
-    }
-    
-    if ticker.upper() in common_prices:
-        st.info(f"📊 Using estimated price for {ticker}: ${common_prices[ticker.upper()]:.2f}")
-        st.warning("⚠️ This is an estimated price. Real-time data may be limited.")
-        return common_prices[ticker.upper()]
-    
+    # Never show a hard-coded "estimated" price.  A stale quote is worse than
+    # clearly saying that live data is temporarily unavailable.
     return None
 
     # ============================================================
@@ -1484,20 +1512,36 @@ def get_price_from_fallback(ticker):
 
 @st.cache_data(ttl=300, show_spinner=False)
 def get_multiple_stocks_data(tickers):
-    """Fetch multiple tickers in one go to reduce API calls"""
-    results = {}
-    for ticker in tickers:
-        try:
-            stock = yf.Ticker(ticker)
-            info = stock.info
+    """Fetch watchlist prices in one batched request instead of one request per ticker."""
+    symbols = tuple(dict.fromkeys(ticker.upper() for ticker in tickers if ticker))
+    if not symbols:
+        return {}
+    try:
+        request_queue.wait_if_needed()
+        history = yf.download(
+            list(symbols), period="5d", interval="1d", auto_adjust=False,
+            progress=False, threads=False, group_by="column",
+        )
+        results = {}
+        for ticker in symbols:
+            if isinstance(history.columns, pd.MultiIndex):
+                closes = history["Close"][ticker].dropna() if ticker in history["Close"] else pd.Series(dtype=float)
+            else:
+                closes = history["Close"].dropna()
+            if closes.empty:
+                results[ticker] = None
+                continue
+            price = float(closes.iloc[-1])
+            previous_price = float(closes.iloc[-2]) if len(closes) > 1 else price
             results[ticker] = {
-                'price': info.get('regularMarketPrice', info.get('currentPrice', 0)),
-                'change': info.get('regularMarketChangePercent', 0),
-                'name': info.get('longName', ticker)
+                "price": price,
+                "change": price - previous_price,
+                "change_pct": ((price - previous_price) / previous_price * 100) if previous_price else 0,
             }
-        except:
-            results[ticker] = None
-    return results
+        return results
+    except Exception as exc:
+        logger.warning("Could not batch-load watchlist prices: %s", exc)
+        return {}
     
 def calculate_rsi(data, window=14):
     delta = data.diff()
@@ -1511,11 +1555,11 @@ def calculate_rsi(data, window=14):
 
 def get_risk_free_rate():
     try:
-        treasury = yf.Ticker("^TNX")
         info = get_cached_stock_info("^TNX")
         rate = info.get('regularMarketPrice', info.get('previousClose', 4.5))
         return rate / 100
-    except:
+    except Exception as exc:
+        logger.warning("Could not load the Treasury yield: %s", exc)
         return 0.045
 
 def get_dividend_yield(ticker):
@@ -1537,7 +1581,8 @@ def get_dividend_yield(ticker):
             if calculated > 0:
                 return calculated
         return 0
-    except:
+    except Exception as exc:
+        logger.debug("Could not calculate dividend yield for %s: %s", ticker, exc)
         return 0
 
 # ============================================================
@@ -1712,6 +1757,8 @@ def add_to_watchlist(ticker):
     ticker = ticker.upper()
     if ticker in st.session_state.watchlist:
         return False, f"{ticker} already in watchlist"
+    if len(st.session_state.watchlist) >= MAX_WATCHLIST_TICKERS:
+        return False, f"Your watchlist can contain up to {MAX_WATCHLIST_TICKERS} tickers. Remove one before adding another."
     with st.spinner(f"Validating {ticker}..."):
         is_valid = validate_ticker(ticker)
     if is_valid:
@@ -1948,21 +1995,13 @@ with st.sidebar:
     st.header("🔄 Auto-Refresh")
     auto_refresh = st.checkbox("Auto-refresh data", value=False)
     if auto_refresh:
-        refresh_interval = st.selectbox("Refresh interval:", ["120 sec", "300 sec", "600 sec"], index=1)
+        refresh_interval = st.selectbox("Refresh interval:", ["300 sec", "600 sec"], index=1)
         interval_seconds = int(refresh_interval.split()[0])
         st.caption(f"🔄 Refreshing every {interval_seconds} seconds")
-        st.caption(f"⚠️ Frequent refreshes may cause rate limits")
+        st.caption("⚠️ 600 seconds is recommended for longer sessions and watchlists")
     else:
         interval_seconds = 0
 
-    # ADD THIS CLEAR CACHE BUTTON RIGHT HERE (SAME INDENTATION AS ABOVE)
-    st.markdown("---")
-    if st.button("🔄 Clear Cache & Retry", key="clear_cache_btn", use_container_width=True):
-        st.cache_data.clear()
-        st.success("Cache cleared! Page will reload...")
-        time.sleep(1)
-        st.rerun()
-        
     st.caption(f"📅 Last update: {format_local_time()}")
 # ============================================================
 # STICKY TABS CSS (UPDATED FOR BETTER LOOKING TABS)
@@ -2767,6 +2806,10 @@ with tab2:
     
     if st.session_state.watchlist:
         st.caption(f"📊 {len(st.session_state.watchlist)} tickers in watchlist")
+        show_watchlist_details = st.checkbox(
+            "Show market cap and earnings (slower)", value=False, key="show_watchlist_details",
+            help="Prices are loaded together. These extra details require separate data requests for each ticker.",
+        )
         col1, col2, col3, col4, col5, col6 = st.columns([1.2, 1.2, 1.8, 1.8, 1.2, 0.6])
         with col1:
             st.markdown("**Ticker**")
@@ -2783,38 +2826,44 @@ with tab2:
         st.markdown("---")
         
         watchlist_data = []
-        invalid_tickers = []
+        unavailable_tickers = []
+        batch_prices = get_multiple_stocks_data(tuple(st.session_state.watchlist))
         
         for w_ticker in st.session_state.watchlist:
             try:
-                info = get_cached_stock_info(w_ticker)
-                price = info.get('currentPrice', info.get('regularMarketPrice', 0))
-                if price and price > 0:
-                    change = price - info.get('previousClose', price)
-                    change_pct = (change / info.get('previousClose', 1) * 100) if info.get('previousClose') else 0
-                    market_cap = info.get('marketCap', 0)
-                    next_earnings = get_next_earnings(w_ticker)
+                market_data = batch_prices.get(w_ticker)
+                if market_data and market_data["price"] > 0:
+                    price = market_data["price"]
+                    change = market_data["change"]
+                    change_pct = market_data["change_pct"]
+                    market_cap = 0
+                    next_earnings = get_next_earnings(w_ticker) if show_watchlist_details else None
                     days_until = 0
-                    if next_earnings:
+                    if show_watchlist_details:
+                        info = get_cached_stock_info(w_ticker)
+                        market_cap = info.get('marketCap', 0)
+                    if show_watchlist_details and next_earnings:
                         days_until = (next_earnings.date() - date.today()).days
                     watchlist_data.append({
                         'Ticker': w_ticker,
                         'Price': format_currency(price),
                         'Change': f"{change:+.2f} ({change_pct:+.1f}%)",
                         'Change_Color': 'green' if change >= 0 else 'red',
-                        'Market Cap': format_large_number(market_cap),
+                        'Market Cap': format_large_number(market_cap) if show_watchlist_details else "—",
                         'Earnings': f"{days_until}d" if 0 < days_until <= 7 else "—",
-                        'Earnings_Warning': 0 < days_until <= 7
+                        'Earnings_Warning': show_watchlist_details and 0 < days_until <= 7
                     })
                 else:
-                    invalid_tickers.append(w_ticker)
-            except:
-                invalid_tickers.append(w_ticker)
+                    unavailable_tickers.append(w_ticker)
+            except Exception as exc:
+                logger.warning("Could not prepare watchlist row for %s: %s", w_ticker, exc)
+                unavailable_tickers.append(w_ticker)
         
-        for invalid in invalid_tickers:
-            if invalid in st.session_state.watchlist:
-                if remove_from_watchlist(invalid):
-                    st.warning(f"Removed invalid ticker: {invalid}")
+        if unavailable_tickers:
+            st.warning(
+                "Could not update: " + ", ".join(unavailable_tickers) +
+                ". They were kept in your watchlist—try again later."
+            )
         
         if watchlist_data:
             for item in watchlist_data:
@@ -2861,13 +2910,11 @@ with tab3:
             get_catalyst_news.clear()
             st.rerun()
     
+    if st.session_state.get("news_limit_ticker") != news_ticker:
+        st.session_state.news_limit_ticker = news_ticker
+        st.session_state.news_article_limit = DEFAULT_NEWS_ARTICLES
+    article_limit = st.session_state.news_article_limit
     with st.spinner(f"Fetching latest news for {news_ticker}... (this may take a few seconds)"):
-        article_limit = st.select_slider(
-            "Articles to show:",
-            options=[20, 50, 75],
-            value=50,
-            key="news_article_limit",
-        )
         news = get_high_quality_news(news_ticker, max_articles=article_limit)
     
     if news:
@@ -2887,16 +2934,16 @@ with tab3:
             )
         st.success(f"Found {len(news)} recent news articles for {news_ticker}")
         for article in news:
-            title = article.get('title', 'No title')
-            link = article.get('link', '#')
-            publisher = article.get('publisher', 'Unknown')
-            source = article.get('source', 'Unknown')
+            title = html.escape(str(article.get('title', 'No title')))
+            link = safe_news_url(article.get('link', '#'))
+            publisher = html.escape(str(article.get('publisher', 'Unknown')))
+            source = html.escape(str(article.get('source', 'Unknown')))
             importance = article.get('importance', 0)
             pub_date = article.get('date', None)
             if pub_date:
                 try:
                     date_str = datetime.fromtimestamp(pub_date).strftime('%Y-%m-%d %H:%M')
-                except:
+                except Exception:
                     date_str = "Recently"
             else:
                 date_str = "Recently"
@@ -2919,7 +2966,7 @@ with tab3:
             st.markdown(f"""
             <div style="background-color: {bg_color}; border-radius: 12px; padding: 12px; margin-bottom: 10px; border-left: 4px solid {badge_color};">
                 <p style="margin: 0; font-weight: bold;">
-                    <a href="{link}" target="_blank" style="text-decoration: none; color: {link_color};">{title}</a>
+                    <a href="{link}" target="_blank" rel="noopener noreferrer" style="text-decoration: none; color: {link_color};">{title}</a>
                 </p>
                 <p style="margin: 5px 0 0 0; font-size: 12px; color: {meta_color}; opacity: 0.72;">
                     📰 {publisher} | 🕐 {date_str} | 📍 {source}
@@ -2931,6 +2978,10 @@ with tab3:
             """, unsafe_allow_html=True)
             st.caption(f"➡️ Click the title to read full article (opens in new tab)")
             st.divider()
+        if article_limit < MAX_NEWS_ARTICLES:
+            if st.button("Load 30 more articles", key="load_more_news", use_container_width=True):
+                st.session_state.news_article_limit = min(article_limit + 30, MAX_NEWS_ARTICLES)
+                st.rerun()
     else:
         st.warning(f"No recent news found for {news_ticker}. Try:")
         st.markdown("""
