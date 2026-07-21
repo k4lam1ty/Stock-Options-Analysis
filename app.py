@@ -419,6 +419,36 @@ st.markdown("""
         line-height: 1.35;
         box-shadow: 0 8px 20px rgba(0, 0, 0, .22);
     }
+    .beta-line, .greek-title {
+        display: flex;
+        align-items: center;
+        gap: 0.3rem;
+    }
+    .beta-line { margin: 0.2rem 0; }
+    .greek-card {
+        min-height: 80px;
+        padding: 0.8rem;
+        border: 1px solid rgba(128, 128, 128, .28);
+        border-radius: 16px;
+        background: var(--secondary-background-color, #1f2937);
+    }
+    .greek-title {
+        color: var(--text-color, #f8fafc);
+        font-size: 0.88rem;
+        font-weight: 600;
+    }
+    .greek-value {
+        margin-top: 0.25rem;
+        color: #0f8f83;
+        font-size: 1.25rem;
+        font-weight: 700;
+    }
+    .greek-title .beta-help-panel {
+        top: 24px;
+        bottom: auto;
+        right: auto;
+        left: 0;
+    }
 
     /* Final responsive pass.  Streamlit renders the same Python layout for
        every screen size, so these browser-side rules turn wide rows into a
@@ -2928,12 +2958,12 @@ with tab1:
                 beta_value = info.get('beta') if info else None
                 beta_display = f"{float(beta_value):.2f}" if beta_value is not None and not pd.isna(beta_value) else "N/A"
                 st.markdown(
-                    f"**Beta:** {beta_display}"
+                    f"<div class=\"beta-line\"><strong>Beta:</strong> <span>{beta_display}</span>"
                     "<details class=\"beta-help\"><summary class=\"dashboard-help-bubble\">i</summary>"
                     "<div class=\"beta-help-panel\"><strong>What is Beta?</strong><br>"
                     "Beta measures how much a stock tends to move compared with the overall market. "
                     "1.00 is about market-like movement; above 1 tends to move more, and below 1 tends to move less."
-                    "</div></details>",
+                    "</div></details></div>",
                     unsafe_allow_html=True,
                 )
             st.markdown("---")
@@ -3052,17 +3082,33 @@ with tab1:
                     
                     col1, col2, col3, col4 = st.columns(4)
                     with col1:
-                        st.metric("Delta", f"{delta:.4f}")
-                        st.caption("Price change for a $1 stock move.")
+                        st.markdown(f"""
+                        <div class="greek-card"><div class="greek-title">Delta
+                        <details class="beta-help"><summary class="dashboard-help-bubble">i</summary>
+                        <div class="beta-help-panel"><strong>Delta</strong><br>Estimated option-price change when the stock moves $1.</div>
+                        </details></div><div class="greek-value">{delta:.4f}</div></div>
+                        """, unsafe_allow_html=True)
                     with col2:
-                        st.metric("Gamma", f"{gamma:.4f}")
-                        st.caption("How quickly Delta changes.")
+                        st.markdown(f"""
+                        <div class="greek-card"><div class="greek-title">Gamma
+                        <details class="beta-help"><summary class="dashboard-help-bubble">i</summary>
+                        <div class="beta-help-panel"><strong>Gamma</strong><br>How quickly Delta changes as the stock price moves.</div>
+                        </details></div><div class="greek-value">{gamma:.4f}</div></div>
+                        """, unsafe_allow_html=True)
                     with col3:
-                        st.metric("Theta (Daily)", f"{theta/365:.4f}")
-                        st.caption("Estimated daily time decay.")
+                        st.markdown(f"""
+                        <div class="greek-card"><div class="greek-title">Theta (Daily)
+                        <details class="beta-help"><summary class="dashboard-help-bubble">i</summary>
+                        <div class="beta-help-panel"><strong>Theta</strong><br>Estimated amount of option value lost each day from time passing.</div>
+                        </details></div><div class="greek-value">{theta/365:.4f}</div></div>
+                        """, unsafe_allow_html=True)
                     with col4:
-                        st.metric("Vega (per 1%)", f"{vega:.4f}")
-                        st.caption("Price change from a 1% IV move.")
+                        st.markdown(f"""
+                        <div class="greek-card"><div class="greek-title">Vega (per 1%)
+                        <details class="beta-help"><summary class="dashboard-help-bubble">i</summary>
+                        <div class="beta-help-panel"><strong>Vega</strong><br>Estimated option-price change from a 1% implied-volatility move.</div>
+                        </details></div><div class="greek-value">{vega:.4f}</div></div>
+                        """, unsafe_allow_html=True)
                     
                     st.markdown("---")
                     st.subheader("📈 Theoretical Fair Value")
