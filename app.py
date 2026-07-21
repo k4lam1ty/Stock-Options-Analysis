@@ -378,8 +378,7 @@ st.markdown("""
     .stCodeBlock {
         border-radius: 12px !important;
     }
-    /* Browser-native help bubble; unlike Streamlit's tooltip icon it stays
-       visible in both light and dark appearances. */
+    /* Clickable help bubble: works on touch screens as well as desktop. */
     .dashboard-help-bubble {
         display: inline-flex;
         align-items: center;
@@ -393,6 +392,32 @@ st.markdown("""
         font: 700 11px/1 Arial, sans-serif;
         cursor: help;
         vertical-align: text-bottom;
+    }
+    .beta-help {
+        display: inline-block;
+        position: relative;
+        margin-left: 4px;
+        vertical-align: text-bottom;
+    }
+    .beta-help summary {
+        list-style: none;
+    }
+    .beta-help summary::-webkit-details-marker { display: none; }
+    .beta-help-panel {
+        position: absolute;
+        z-index: 50;
+        right: 0;
+        bottom: 24px;
+        width: min(260px, 72vw);
+        padding: 0.65rem 0.75rem;
+        border: 1px solid rgba(128, 128, 128, .45);
+        border-radius: 10px;
+        background: var(--secondary-background-color, #1f2937);
+        color: var(--text-color, #f8fafc);
+        font-size: 0.82rem;
+        font-weight: 400;
+        line-height: 1.35;
+        box-shadow: 0 8px 20px rgba(0, 0, 0, .22);
     }
 
     /* Final responsive pass.  Streamlit renders the same Python layout for
@@ -2904,9 +2929,11 @@ with tab1:
                 beta_display = f"{float(beta_value):.2f}" if beta_value is not None and not pd.isna(beta_value) else "N/A"
                 st.markdown(
                     f"**Beta:** {beta_display}"
-                    "<span class=\"dashboard-help-bubble\" "
-                    "title=\"Beta measures how much a stock tends to move compared with the overall market. "
-                    "A beta of 1 moves about like the market; above 1 tends to move more; below 1 tends to move less.\">i</span>",
+                    "<details class=\"beta-help\"><summary class=\"dashboard-help-bubble\">i</summary>"
+                    "<div class=\"beta-help-panel\"><strong>What is Beta?</strong><br>"
+                    "Beta measures how much a stock tends to move compared with the overall market. "
+                    "1.00 is about market-like movement; above 1 tends to move more, and below 1 tends to move less."
+                    "</div></details>",
                     unsafe_allow_html=True,
                 )
             st.markdown("---")
