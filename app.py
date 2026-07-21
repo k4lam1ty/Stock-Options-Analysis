@@ -513,27 +513,62 @@ def format_local_date(dt=None):
     return dt.strftime('%A, %B %d, %Y')
 
 
-def scroll_to_page_top():
-    """Smoothly return the Streamlit page to the top from a normal button."""
+def install_page_navigation_helpers():
+    """Install a fixed main-page top button and synchronize navigation colors."""
     st.components.v1.html("""
     <script>
     setTimeout(() => {
         try {
             const doc = window.parent.document;
-            const targets = [
-                window.parent,
-                doc.documentElement,
-                doc.body,
-                doc.querySelector('[data-testid="stAppViewContainer"]'),
-                doc.querySelector('section.main')
-            ];
-            targets.forEach((target) => {
-                if (target && typeof target.scrollTo === 'function') {
+            const root = doc.documentElement;
+            const app = doc.querySelector('[data-testid="stAppViewContainer"]') || doc.querySelector('.stApp');
+            const background = window.parent.getComputedStyle(app || doc.body).backgroundColor;
+            const rgb = background.match(/[0-9.]+/g) || ["14", "17", "23"];
+            const brightness = (Number(rgb[0]) * 299 + Number(rgb[1]) * 587 + Number(rgb[2]) * 114) / 1000;
+            const isLight = brightness > 150;
+            root.style.setProperty('--dashboard-sticky-bg', isLight ? '#ffffff' : '#0e1117');
+            root.style.setProperty('--dashboard-sticky-rail', isLight ? '#f3f5f8' : '#1b2430');
+            root.style.setProperty('--dashboard-sticky-border', isLight ? '#d8dee8' : '#374151');
+            root.style.setProperty('--dashboard-control-text', isLight ? '#111827' : '#f8fafc');
+
+            if (!doc.getElementById('dashboard-top-button-style')) {
+                const style = doc.createElement('style');
+                style.id = 'dashboard-top-button-style';
+                style.textContent = `
+                    #dashboard-back-to-top {
+                        position: fixed; right: 1.25rem; bottom: 5rem; z-index: 1001;
+                        display: inline-flex; align-items: center; gap: .45rem;
+                        padding: .65rem .9rem; border-radius: 999px;
+                        border: 1px solid var(--dashboard-sticky-border, #374151);
+                        background: var(--dashboard-sticky-rail, #1b2430);
+                        color: var(--dashboard-control-text, #f8fafc); font: 600 14px sans-serif; cursor: pointer;
+                        box-shadow: 0 10px 26px rgba(0,0,0,.25);
+                    }
+                    #dashboard-back-to-top:hover { transform: translateY(-2px); filter: brightness(1.12); }
+                `;
+                doc.head.appendChild(style);
+            }
+
+            let button = doc.getElementById('dashboard-back-to-top');
+            if (!button) {
+                button = doc.createElement('button');
+                button.id = 'dashboard-back-to-top';
+                button.type = 'button';
+                button.setAttribute('aria-label', 'Back to top');
+                button.innerHTML = '↑ <span>Back to top</span>';
+                button.addEventListener('click', () => {
+                    const preferred = [
+                        doc.querySelector('section.main'),
+                        doc.querySelector('[data-testid="stAppViewContainer"]'),
+                        doc.querySelector('.main')
+                    ];
+                    const target = preferred.find((item) => item && item.scrollHeight > item.clientHeight) || doc.scrollingElement;
                     target.scrollTo({ top: 0, behavior: 'smooth' });
-                }
-            });
+                });
+                doc.body.appendChild(button);
+            }
         } catch (error) {
-            window.scrollTo({ top: 0, behavior: 'smooth' });
+            // The dashboard remains fully usable if a browser blocks parent access.
         }
     }, 80);
     </script>
@@ -1926,8 +1961,6 @@ GREEK_DESCRIPTIONS = {
 
 with st.sidebar:
     st.caption(f"Signed in as: **{st.session_state.get('account_email', '')}**")
-    if st.button("↑ Back to top", key="back_to_top", use_container_width=True, help="Smoothly return to the top of the dashboard"):
-        scroll_to_page_top()
     if st.button("Sign out", key="sign_out", use_container_width=True):
         try:
             supabase.auth.sign_out()
@@ -2074,6 +2107,18 @@ with st.sidebar:
         background-color: var(--secondary-background-color) !important;
         color: var(--text-color) !important;
     }
+    /* Keep dropdown arrows, +/- controls, and help icons readable in both modes. */
+    [data-testid="stSelectbox"] svg,
+    [data-testid="stNumberInput"] svg,
+    [data-testid="stDateInput"] svg,
+    [data-testid="stTooltipIcon"],
+    [data-testid="stTooltipIcon"] svg,
+    button[aria-label*="help" i],
+    button[aria-label*="help" i] svg {
+        color: var(--dashboard-control-text, #f8fafc) !important;
+        fill: var(--dashboard-control-text, #f8fafc) !important;
+        -webkit-text-fill-color: var(--dashboard-control-text, #f8fafc) !important;
+    }
     </style>
     """, unsafe_allow_html=True)
     st.markdown("---")
@@ -2124,6 +2169,10 @@ with st.sidebar:
         interval_seconds = 0
 
     st.caption(f"📅 Last update: {format_local_time()}")
+
+# The helper creates a fixed main-page button, not a sidebar control.
+install_page_navigation_helpers()
+
 # ============================================================
 # STICKY TABS CSS (UPDATED FOR BETTER LOOKING TABS)
 # ============================================================
@@ -2135,7 +2184,7 @@ div[data-testid="stTabs"] div[data-baseweb="tab-list"],
     position: sticky !important;
     top: 3.1rem !important;
     z-index: 900 !important;
-    background-color: var(--background-color) !important;
+    background-color: var(--dashboard-sticky-bg, #0e1117) !important;
     padding-top: 0.65rem !important;
     padding-bottom: 0.65rem !important;
     margin-bottom: 0 !important;
@@ -2147,7 +2196,7 @@ div[data-testid="stTabs"] [role="tablist"] {
     position: sticky !important;
     top: 3.1rem !important;
     z-index: 900 !important;
-    background-color: var(--background-color) !important;
+    background-color: var(--dashboard-sticky-bg, #0e1117) !important;
 }
 .stTabs [data-baseweb="tab-panel"] {
     padding-top: 20px !important;
@@ -2168,15 +2217,15 @@ div[data-testid="stTabs"] div[data-baseweb="tab-list"],
 div[data-testid="stTabs"] div[role="tablist"] {
     width: 100% !important;
     box-sizing: border-box !important;
-    background-color: var(--secondary-background-color) !important;
-    border: 1px solid rgba(128, 128, 128, 0.32) !important;
+    background-color: var(--dashboard-sticky-rail, #1b2430) !important;
+    border: 1px solid var(--dashboard-sticky-border, #374151) !important;
     border-radius: 14px !important;
     padding: 0.35rem !important;
     gap: 0.25rem !important;
     box-shadow: 0 10px 22px -16px rgba(0, 0, 0, 0.85) !important;
     overflow: hidden !important;
 }
-div[data-testid="stTabs"] button[data-baseweb="tab"] {
+div[data-testid="stTabs"] [data-baseweb="tab"] {
     color: var(--text-color) !important;
     opacity: 0.72 !important;
     border: 0 !important;
@@ -2184,17 +2233,17 @@ div[data-testid="stTabs"] button[data-baseweb="tab"] {
     padding: 0.55rem 0.8rem !important;
     transition: background-color 140ms ease, color 140ms ease !important;
 }
-div[data-testid="stTabs"] button[data-baseweb="tab"]:hover {
+div[data-testid="stTabs"] [data-baseweb="tab"]:hover {
     background-color: rgba(128, 128, 128, 0.18) !important;
     opacity: 1 !important;
 }
-div[data-testid="stTabs"] button[data-baseweb="tab"][aria-selected="true"] {
+div[data-testid="stTabs"] [data-baseweb="tab"][aria-selected="true"] {
     background-color: var(--primary-color) !important;
     color: #ffffff !important;
     opacity: 1 !important;
     font-weight: 700 !important;
 }
-div[data-testid="stTabs"] div[data-baseweb="tab-highlight"] {
+div[data-testid="stTabs"] [data-baseweb="tab-highlight"] {
     display: none !important;
 }
 </style>
@@ -2666,7 +2715,15 @@ with tab1:
                     "Current Ratio": f"{current_ratio:.2f}",
                 }
                 df = pd.DataFrame(list(financials.items()), columns=["Metric", "Value"])
-                st.dataframe(df, use_container_width=True, hide_index=True)
+                # Give this short table exactly enough height for every row so
+                # users never have to use a tiny internal scrollbar for one value.
+                financial_table_height = 38 * (len(df) + 1) + 8
+                st.dataframe(
+                    df,
+                    use_container_width=True,
+                    hide_index=True,
+                    height=financial_table_height,
+                )
                 st.markdown("---")
             
             # OPTIONS CALCULATOR
