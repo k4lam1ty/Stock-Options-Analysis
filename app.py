@@ -378,6 +378,75 @@ st.markdown("""
     .stCodeBlock {
         border-radius: 12px !important;
     }
+
+    /* Final responsive pass.  Streamlit renders the same Python layout for
+       every screen size, so these browser-side rules turn wide rows into a
+       touch-friendly two-column grid only on phones. */
+    @media (max-width: 640px) {
+        .main .block-container {
+            padding: 0.65rem 0.75rem 5rem !important;
+        }
+
+        [data-testid="stHorizontalBlock"] {
+            flex-wrap: wrap !important;
+            gap: 0.65rem !important;
+        }
+
+        /* Two compact cards per row is much easier to scan than six tiny
+           cards or a long single-column page. */
+        [data-testid="column"] {
+            flex: 1 1 calc(50% - 0.4rem) !important;
+            min-width: calc(50% - 0.4rem) !important;
+            width: calc(50% - 0.4rem) !important;
+            margin-bottom: 0.15rem !important;
+        }
+
+        div[data-testid="stMetric"] {
+            min-width: 0 !important;
+            padding: 0.65rem !important;
+            border-radius: 12px !important;
+        }
+        div[data-testid="stMetricValue"] {
+            font-size: 1.05rem !important;
+            overflow-wrap: anywhere !important;
+        }
+        div[data-testid="stMetricLabel"] {
+            font-size: 0.75rem !important;
+        }
+
+        /* Tabs stay in one tidy, swipeable row instead of wrapping or being
+           cut off on narrow screens. */
+        [data-testid="stTabs"] {
+            max-width: 100% !important;
+            overflow-x: auto !important;
+            scrollbar-width: none;
+        }
+        [data-testid="stTabs"]::-webkit-scrollbar { display: none; }
+        [data-testid="stTabs"] [role="tablist"],
+        [data-testid="stTabs"] [data-baseweb="tab-list"] {
+            min-width: max-content !important;
+            width: max-content !important;
+            gap: 2px !important;
+        }
+        [data-testid="stTabs"] [role="tab"],
+        [data-testid="stTabs"] [data-baseweb="tab"] {
+            padding: 0.55rem 0.6rem !important;
+            font-size: 0.8rem !important;
+            white-space: nowrap !important;
+        }
+
+        /* Streamlit dataframes retain their columns and can scroll sideways
+           rather than crushing table text into unreadable fragments. */
+        [data-testid="stDataFrame"], [data-testid="stTable"] {
+            max-width: 100% !important;
+            overflow-x: auto !important;
+        }
+
+        iframe { height: min(62vh, 430px) !important; }
+        .stSidebar { width: min(86vw, 320px) !important; }
+        h1 { font-size: 1.55rem !important; }
+        h2, h3 { font-size: 1.2rem !important; }
+    }
 </style>
 """, unsafe_allow_html=True)
 
