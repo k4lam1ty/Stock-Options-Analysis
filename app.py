@@ -1810,11 +1810,16 @@ def get_implied_volatility_for_strike(ticker, strike, expiration_date, option_ty
 # ============================================================
 
 def tradingview_full_chart(ticker, timeframe="D", theme="dark"):
-    """Render a chart that automatically follows Streamlit's active appearance."""
+    """Render a consistently dark TradingView chart."""
     chart_symbol = json.dumps(str(ticker).upper())
     chart_interval = json.dumps(str(timeframe))
     preferred_light_theme = json.dumps(str(theme).lower() == "light")
     chart_html = f"""
+    <style>
+        html, body, .tradingview-widget-container, #tradingview_full_chart {{
+            margin: 0; padding: 0; background: #0e1117 !important;
+        }}
+    </style>
     <div class="tradingview-widget-container">
         <div id="tradingview_full_chart"></div>
         <script src="https://s3.tradingview.com/tv.js"></script>
@@ -1879,10 +1884,11 @@ def tradingview_full_chart(ticker, timeframe="D", theme="dark"):
                 return serverSelectedLightTheme;
             }}
         }}
-        const useLightTheme = appIsUsingLightTheme();
-        const chartTheme = useLightTheme ? "light" : "dark";
-        const toolbarBackground = useLightTheme ? "#ffffff" : "#1e293b";
-        const loadingBackground = useLightTheme ? "#f8fafc" : "#1e1e2e";
+        // Keep the market chart dark in both dashboard appearances.  This is
+        // easier on the eyes for candlesticks and avoids a bright white chart.
+        const chartTheme = "dark";
+        const toolbarBackground = "#0e1117";
+        const loadingBackground = "#0e1117";
         new TradingView.widget({{
             "width": "100%", "height": 700, "symbol": {chart_symbol},
             "interval": {chart_interval}, "timezone": "America/Chicago",
