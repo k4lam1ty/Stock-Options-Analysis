@@ -1198,8 +1198,9 @@ def show_login_screen(auth_client):
                         {"redirect_to": "https://stock-options-analysis.streamlit.app"},
                     )
                 except Exception:
-                    pass
-                st.success("If that email has an account, a reset link is on its way. Check your inbox and spam folder.")
+                    st.error("A reset email could not be sent right now. Please wait before trying again, then check your inbox and spam folder.")
+                else:
+                    st.success("If that email has an account, a reset link is on its way. Check your inbox and spam folder.")
 
 
 supabase = get_supabase_client()
