@@ -1058,6 +1058,69 @@ def restore_persistent_login(auth_client):
         clear_persistent_login()
 
 
+def install_default_password_reset_handler():
+    """Handle Supabase's standard recovery link without custom email templates."""
+    try:
+        supabase_url = st.secrets["SUPABASE_URL"]
+        supabase_key = st.secrets["SUPABASE_KEY"]
+    except KeyError:
+        return
+
+    handler_html = f"""
+    <script>
+    (() => {{
+        let appWindow = window;
+        let recoveryHash = '';
+        for (let level = 0; level < 6; level += 1) {{
+            try {{
+                if (appWindow.location.hash) {{ recoveryHash = appWindow.location.hash.slice(1); break; }}
+                if (appWindow.parent === appWindow) break;
+                appWindow = appWindow.parent;
+            }} catch (ignored) {{ break; }}
+        }}
+        const params = new URLSearchParams(recoveryHash);
+        const accessToken = params.get('access_token');
+        if (!accessToken || params.get('type') !== 'recovery') return;
+
+        const doc = appWindow.document;
+        if (doc.getElementById('dashboard-password-reset-overlay')) return;
+        const overlay = doc.createElement('div');
+        overlay.id = 'dashboard-password-reset-overlay';
+        overlay.innerHTML = `
+          <div role="dialog" aria-modal="true" aria-label="Reset password" style="width:min(430px,calc(100vw - 2rem));background:#fff;color:#172033;border:1px solid #d7e0ea;border-radius:16px;padding:1.35rem;box-shadow:0 20px 60px rgba(0,0,0,.28);font-family:Arial,sans-serif;">
+            <h2 style="margin:0 0 .5rem;font-size:1.35rem;">Choose a new password</h2>
+            <p style="margin:0 0 1rem;color:#526174;line-height:1.4;">Your reset link is verified. Enter and confirm your new password.</p>
+            <label style="display:block;font-weight:600;margin-bottom:.35rem;">New password</label>
+            <input id="dashboard-reset-password" type="password" minlength="8" autocomplete="new-password" style="box-sizing:border-box;width:100%;padding:.7rem;border:1px solid #cbd5e1;border-radius:8px;margin-bottom:.8rem;" />
+            <label style="display:block;font-weight:600;margin-bottom:.35rem;">Confirm new password</label>
+            <input id="dashboard-reset-password-confirm" type="password" minlength="8" autocomplete="new-password" style="box-sizing:border-box;width:100%;padding:.7rem;border:1px solid #cbd5e1;border-radius:8px;" />
+            <p id="dashboard-reset-message" role="status" style="min-height:1.2rem;margin:.75rem 0;color:#b42318;"></p>
+            <button id="dashboard-reset-submit" type="button" style="width:100%;border:0;border-radius:8px;padding:.75rem;background:#2563eb;color:#fff;font-weight:700;cursor:pointer;">Save new password</button>
+          </div>`;
+        Object.assign(overlay.style, {{position:'fixed',inset:'0',zIndex:'99999',display:'flex',alignItems:'center',justifyContent:'center',padding:'1rem',background:'rgba(15,23,42,.52)'}});
+        doc.body.appendChild(overlay);
+        const password = doc.getElementById('dashboard-reset-password');
+        const confirm = doc.getElementById('dashboard-reset-password-confirm');
+        const message = doc.getElementById('dashboard-reset-message');
+        const submit = doc.getElementById('dashboard-reset-submit');
+        submit.onclick = async () => {{
+          if (password.value.length < 8) {{ message.textContent = 'Use a password with at least 8 characters.'; return; }}
+          if (password.value !== confirm.value) {{ message.textContent = 'The passwords do not match.'; return; }}
+          submit.disabled = true; submit.textContent = 'Saving…';
+          try {{
+            const response = await fetch({json.dumps(supabase_url + '/auth/v1/user')}, {{method:'PUT',headers:{{'Content-Type':'application/json','apikey':{json.dumps(supabase_key)},'Authorization':'Bearer ' + accessToken}},body:JSON.stringify({{password:password.value}})}});
+            if (!response.ok) throw new Error('Password update failed');
+            appWindow.history.replaceState({{}}, '', appWindow.location.pathname + appWindow.location.search);
+            message.style.color = '#067647'; message.textContent = 'Password updated. You can now sign in.'; submit.textContent = 'Done';
+            setTimeout(() => appWindow.location.reload(), 1200);
+          }} catch (error) {{ message.textContent = 'This reset link is invalid or expired. Request a new one and try again.'; submit.disabled = false; submit.textContent = 'Save new password'; }}
+        }};
+    }})();
+    </script>
+    """
+    st.components.v1.html(handler_html, height=0, width=0)
+
+
 def show_login_screen(auth_client):
     """Show the only screen visitors see until they sign in."""
     st.title("📈 Stock Analysis Dashboard")
@@ -1108,10 +1171,10 @@ def show_login_screen(auth_client):
 
     with reset_tab:
         st.write("**Reset your password**")
-        st.caption("We will email a one-time code to reset the password for your account.")
+        st.caption("We will email a secure link that lets you choose a new password.")
         with st.form("request_password_reset_form"):
             reset_email = st.text_input("Email address", key="reset_email")
-            request_reset = st.form_submit_button("Email me a reset code", use_container_width=True)
+            request_reset = st.form_submit_button("Email me a reset link", use_container_width=True)
         if request_reset:
             if not reset_email:
                 st.error("Enter your email address.")
@@ -1119,49 +1182,17 @@ def show_login_screen(auth_client):
                 try:
                     # Keep this message the same whether or not the address is
                     # registered, so the page does not reveal account existence.
-                    auth_client.auth.reset_password_for_email(reset_email)
+                    auth_client.auth.reset_password_for_email(
+                        reset_email,
+                        {"redirect_to": "https://stock-options-analysis.streamlit.app"},
+                    )
                 except Exception:
                     pass
-                st.success("If that email has an account, a reset code is on its way. Check your inbox and spam folder.")
-
-        st.markdown("---")
-        st.write("**Enter your code and choose a new password**")
-        with st.form("complete_password_reset_form"):
-            recovery_email = st.text_input("Account email", key="recovery_email")
-            recovery_code = st.text_input("6-digit recovery code", key="recovery_code", max_chars=6)
-            new_password = st.text_input("New password (at least 8 characters)", type="password", key="recovery_new_password")
-            confirm_new_password = st.text_input("Confirm new password", type="password", key="recovery_confirm_password")
-            complete_reset = st.form_submit_button("Save new password", use_container_width=True)
-        if complete_reset:
-            if not recovery_email or not recovery_code or not new_password:
-                st.error("Enter your email, recovery code, and new password.")
-            elif len(new_password) < 8:
-                st.error("Use a password with at least 8 characters.")
-            elif new_password != confirm_new_password:
-                st.error("The new passwords do not match.")
-            else:
-                try:
-                    recovery = auth_client.auth.verify_otp({
-                        "email": recovery_email,
-                        "token": recovery_code.strip(),
-                        "type": "recovery",
-                    })
-                    recovery_session = getattr(recovery, "session", None)
-                    if not recovery_session:
-                        raise ValueError("Recovery session was not created")
-                    auth_client.auth.set_session(
-                        recovery_session.access_token,
-                        recovery_session.refresh_token,
-                    )
-                    auth_client.auth.update_user({"password": new_password})
-                    save_login_session(recovery_session, recovery_email)
-                    st.success("Your password was changed. You are now signed in.")
-                    st.rerun()
-                except Exception:
-                    st.error("That code is invalid or expired. Request a new code and try again.")
+                st.success("If that email has an account, a reset link is on its way. Check your inbox and spam folder.")
 
 
 supabase = get_supabase_client()
+install_default_password_reset_handler()
 restore_persistent_login(supabase)
 if "supabase_tokens" not in st.session_state:
     show_login_screen(supabase)
