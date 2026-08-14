@@ -1109,11 +1109,22 @@ def install_default_password_reset_handler():
           submit.disabled = true; submit.textContent = 'Saving…';
           try {{
             const response = await fetch({json.dumps(supabase_url + '/auth/v1/user')}, {{method:'PUT',headers:{{'Content-Type':'application/json','apikey':{json.dumps(supabase_key)},'Authorization':'Bearer ' + accessToken}},body:JSON.stringify({{password:password.value}})}});
-            if (!response.ok) throw new Error('Password update failed');
+            if (!response.ok) {{
+              const errorData = await response.json().catch(() => ({{}}));
+              const detail = errorData.msg || errorData.message || `Request returned ${{response.status}}`;
+              throw new Error(detail);
+            }}
             appWindow.history.replaceState({{}}, '', appWindow.location.pathname + appWindow.location.search);
             message.style.color = '#067647'; message.textContent = 'Password updated. You can now sign in.'; submit.textContent = 'Done';
             setTimeout(() => appWindow.location.reload(), 1200);
-          }} catch (error) {{ message.textContent = 'This reset link is invalid or expired. Request a new one and try again.'; submit.disabled = false; submit.textContent = 'Save new password'; }}
+          }} catch (error) {{
+            const detail = String(error.message || '');
+            message.textContent = detail.toLowerCase().includes('jwt') || detail.toLowerCase().includes('expired')
+              ? 'This reset link is invalid or expired. Request a new link and use only the newest email.'
+              : `Could not save the password: ${{detail}}`;
+            submit.disabled = false;
+            submit.textContent = 'Save new password';
+          }}
         }};
     }})();
     </script>
