@@ -1063,7 +1063,7 @@ def show_login_screen(auth_client):
     st.title("📈 Stock Analysis Dashboard")
     st.subheader("Sign in to use your personal watchlist")
     st.caption("Each account gets its own saved tickers.")
-    sign_in_tab, sign_up_tab = st.tabs(["Sign in", "Create account"])
+    sign_in_tab, sign_up_tab, reset_tab = st.tabs(["Sign in", "Create account", "Forgot password?"])
 
     with sign_in_tab:
         with st.form("sign_in_form"):
@@ -1105,6 +1105,60 @@ def show_login_screen(auth_client):
                     st.success("Account created. Check your email for the confirmation link, then return here and sign in.")
                 except Exception as exc:
                     st.error(f"Could not create the account: {str(exc)}")
+
+    with reset_tab:
+        st.write("**Reset your password**")
+        st.caption("We will email a one-time code to reset the password for your account.")
+        with st.form("request_password_reset_form"):
+            reset_email = st.text_input("Email address", key="reset_email")
+            request_reset = st.form_submit_button("Email me a reset code", use_container_width=True)
+        if request_reset:
+            if not reset_email:
+                st.error("Enter your email address.")
+            else:
+                try:
+                    # Keep this message the same whether or not the address is
+                    # registered, so the page does not reveal account existence.
+                    auth_client.auth.reset_password_for_email(reset_email)
+                except Exception:
+                    pass
+                st.success("If that email has an account, a reset code is on its way. Check your inbox and spam folder.")
+
+        st.markdown("---")
+        st.write("**Enter your code and choose a new password**")
+        with st.form("complete_password_reset_form"):
+            recovery_email = st.text_input("Account email", key="recovery_email")
+            recovery_code = st.text_input("6-digit recovery code", key="recovery_code", max_chars=6)
+            new_password = st.text_input("New password (at least 8 characters)", type="password", key="recovery_new_password")
+            confirm_new_password = st.text_input("Confirm new password", type="password", key="recovery_confirm_password")
+            complete_reset = st.form_submit_button("Save new password", use_container_width=True)
+        if complete_reset:
+            if not recovery_email or not recovery_code or not new_password:
+                st.error("Enter your email, recovery code, and new password.")
+            elif len(new_password) < 8:
+                st.error("Use a password with at least 8 characters.")
+            elif new_password != confirm_new_password:
+                st.error("The new passwords do not match.")
+            else:
+                try:
+                    recovery = auth_client.auth.verify_otp({
+                        "email": recovery_email,
+                        "token": recovery_code.strip(),
+                        "type": "recovery",
+                    })
+                    recovery_session = getattr(recovery, "session", None)
+                    if not recovery_session:
+                        raise ValueError("Recovery session was not created")
+                    auth_client.auth.set_session(
+                        recovery_session.access_token,
+                        recovery_session.refresh_token,
+                    )
+                    auth_client.auth.update_user({"password": new_password})
+                    save_login_session(recovery_session, recovery_email)
+                    st.success("Your password was changed. You are now signed in.")
+                    st.rerun()
+                except Exception:
+                    st.error("That code is invalid or expired. Request a new code and try again.")
 
 
 supabase = get_supabase_client()
