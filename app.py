@@ -2796,14 +2796,35 @@ with st.sidebar:
        between Light and Dark mode from the Streamlit menu. */
     .stButton > button,
     .stFormSubmitButton > button {
-        background-color: var(--secondary-background-color) !important;
-        color: var(--text-color) !important;
-        border: 1px solid rgba(128, 128, 128, 0.45) !important;
+        background-color: var(--primary-color) !important;
+        color: #ffffff !important;
+        border: 1px solid var(--primary-color) !important;
+        border-radius: 9px !important;
+        font-weight: 650 !important;
+        box-shadow: 0 2px 7px rgba(0, 0, 0, 0.24) !important;
+    }
+    .stButton > button *,
+    .stFormSubmitButton > button * {
+        color: #ffffff !important;
+        fill: #ffffff !important;
     }
     .stButton > button:hover,
     .stFormSubmitButton > button:hover {
-        background-color: var(--background-color) !important;
+        background-color: var(--primary-color) !important;
+        color: #ffffff !important;
         border-color: var(--primary-color) !important;
+        filter: brightness(1.16) !important;
+        box-shadow: 0 5px 14px rgba(0, 0, 0, 0.30) !important;
+    }
+    .stButton > button:focus-visible,
+    .stFormSubmitButton > button:focus-visible {
+        outline: 3px solid var(--text-color) !important;
+        outline-offset: 3px !important;
+    }
+    .stButton > button:disabled,
+    .stFormSubmitButton > button:disabled {
+        opacity: 0.48 !important;
+        box-shadow: none !important;
     }
     </style>
     """, unsafe_allow_html=True)
