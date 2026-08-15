@@ -885,15 +885,6 @@ def install_page_navigation_helpers():
                         child.style.setProperty('color', text, 'important');
                     }});
                 }});
-                doc.querySelectorAll('[data-testid="stSelectbox"] svg').forEach((arrow) => {{
-                    arrow.style.setProperty('display', 'block', 'important');
-                    arrow.style.setProperty('background-color', 'transparent', 'important');
-                    arrow.style.setProperty('border', '0', 'important');
-                    arrow.style.setProperty('padding', '0', 'important');
-                    arrow.style.setProperty('color', text, 'important');
-                    arrow.style.removeProperty('fill');
-                    arrow.style.removeProperty('stroke');
-                }});
                 doc.querySelectorAll('[data-testid="stSelectbox"] [data-baseweb="select"], [data-testid="stSelectbox"] [data-baseweb="select"] > div').forEach((selectLayer) => {{
                     selectLayer.style.setProperty('background-color', controlBackground, 'important');
                     selectLayer.style.setProperty('color', text, 'important');
@@ -2870,21 +2861,6 @@ with st.sidebar:
         background: transparent !important;
         color: var(--dashboard-control-text, #f8fafc) !important;
         -webkit-text-fill-color: var(--dashboard-control-text, #f8fafc) !important;
-    }
-    [data-testid="stSelectbox"] svg {
-        display: block !important;
-        background: transparent !important;
-        border: 0 !important;
-        border-radius: 0 !important;
-        color: var(--dashboard-control-text, #f8fafc) !important;
-        width: 1rem !important;
-        height: 1rem !important;
-        padding: 0 !important;
-        opacity: 1 !important;
-    }
-    [data-testid="stSelectbox"] svg path {
-        fill: currentColor !important;
-        stroke: currentColor !important;
     }
     [data-testid="stNumberInput"] button *,
     [data-testid="stDateInput"] button *,
