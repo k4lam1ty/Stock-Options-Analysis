@@ -2838,6 +2838,18 @@ with st.sidebar:
         background-color: var(--dashboard-control-bg, #1f2937) !important;
         color: var(--dashboard-control-text, #f8fafc) !important;
         border-color: var(--dashboard-control-border, #64748b) !important;
+        box-shadow: none !important;
+        outline: none !important;
+    }
+    [data-testid="stSelectbox"] [data-baseweb="select"] > div {
+        position: relative !important;
+        min-height: 2.15rem !important;
+        padding-right: 2.45rem !important;
+        border-radius: 8px !important;
+    }
+    [data-testid="stSelectbox"] [data-baseweb="select"]:focus-within > div {
+        border-color: var(--dashboard-control-border, #64748b) !important;
+        box-shadow: 0 0 0 1px var(--dashboard-control-border, #64748b) !important;
     }
     [data-testid="stSelectbox"] [data-baseweb="select"] input,
     [data-testid="stSelectbox"] [data-baseweb="select"] span {
@@ -2846,15 +2858,19 @@ with st.sidebar:
         -webkit-text-fill-color: var(--dashboard-control-text, #f8fafc) !important;
     }
     [data-testid="stSelectbox"] svg {
-        background: transparent !important;
-        border: 0 !important;
-        border-radius: 0 !important;
+        display: none !important;
+    }
+    [data-testid="stSelectbox"] [data-baseweb="select"] > div::after {
+        content: "⌄" !important;
+        position: absolute !important;
+        right: 0.72rem !important;
+        top: 50% !important;
+        transform: translateY(-58%) !important;
         color: var(--dashboard-control-text, #f8fafc) !important;
-        fill: var(--dashboard-control-text, #f8fafc) !important;
-        stroke: var(--dashboard-control-text, #f8fafc) !important;
-        width: 1rem !important;
-        height: 1rem !important;
-        opacity: 1 !important;
+        font-size: 1.25rem !important;
+        font-weight: 600 !important;
+        line-height: 1 !important;
+        pointer-events: none !important;
     }
     [data-testid="stNumberInput"] button *,
     [data-testid="stDateInput"] button *,
