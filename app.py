@@ -788,6 +788,7 @@ def install_page_navigation_helpers():
                 root.style.setProperty('--dashboard-control-text', isLight ? '#111827' : '#f8fafc');
                 root.style.setProperty('--dashboard-control-bg', isLight ? '#f8fafc' : '#1f2937');
                 root.style.setProperty('--dashboard-control-border', isLight ? '#94a3b8' : '#64748b');
+                root.style.setProperty('--dashboard-control-button', isLight ? '#e2e8f0' : '#334155');
                 root.style.setProperty('--dashboard-tab-text', isLight ? '#1f2937' : '#f8fafc');
                 root.style.setProperty('--dashboard-option-card-bg', isLight ? '#ffffff' : '#0e1117');
                 root.style.setProperty('--dashboard-option-card-border', isLight ? '#d8dee8' : '#374151');
@@ -2863,13 +2864,27 @@ with st.sidebar:
     [data-testid="stSelectbox"] [data-baseweb="select"] > div::after {
         content: "⌄" !important;
         position: absolute !important;
-        right: 0.72rem !important;
+        right: 0.83rem !important;
         top: 50% !important;
         transform: translateY(-58%) !important;
         color: var(--dashboard-control-text, #f8fafc) !important;
         font-size: 1.25rem !important;
         font-weight: 600 !important;
         line-height: 1 !important;
+        pointer-events: none !important;
+        z-index: 1 !important;
+    }
+    [data-testid="stSelectbox"] [data-baseweb="select"] > div::before {
+        content: "" !important;
+        position: absolute !important;
+        right: 0.24rem !important;
+        top: 0.23rem !important;
+        bottom: 0.23rem !important;
+        width: 1.85rem !important;
+        border: 1px solid var(--dashboard-control-border, #64748b) !important;
+        border-radius: 7px !important;
+        background-color: var(--dashboard-control-button, #334155) !important;
+        box-sizing: border-box !important;
         pointer-events: none !important;
     }
     [data-testid="stNumberInput"] button *,
