@@ -865,7 +865,7 @@ def install_page_navigation_helpers():
                 });
                 const controlBackground = isLight ? '#f8fafc' : '#1f2937';
                 const controlBorder = isLight ? '#94a3b8' : '#64748b';
-                doc.querySelectorAll('[data-testid="stNumberInput"] button, [data-testid="stDateInput"] button, [data-testid="stSelectbox"] button, [data-testid="stSelectbox"] svg').forEach((control) => {{
+                doc.querySelectorAll('[data-testid="stNumberInput"] button, [data-testid="stDateInput"] button').forEach((control) => {{
                     control.style.setProperty('background-color', controlBackground, 'important');
                     control.style.setProperty('color', text, 'important');
                     control.style.setProperty('fill', text, 'important');
@@ -873,6 +873,17 @@ def install_page_navigation_helpers():
                     control.querySelectorAll('*').forEach((child) => {{
                         child.style.setProperty('color', text, 'important');
                         child.style.setProperty('fill', text, 'important');
+                    }});
+                }});
+                doc.querySelectorAll('[data-testid="stSelectbox"] button, [data-testid="stSelectbox"] svg').forEach((control) => {{
+                    control.style.setProperty('background-color', 'transparent', 'important');
+                    control.style.setProperty('border', '0', 'important');
+                    control.style.setProperty('color', text, 'important');
+                    control.style.setProperty('fill', text, 'important');
+                    control.querySelectorAll('*').forEach((child) => {{
+                        child.style.setProperty('color', text, 'important');
+                        child.style.setProperty('fill', text, 'important');
+                        child.style.setProperty('stroke', text, 'important');
                     }});
                 }});
             };
@@ -2786,13 +2797,39 @@ with st.sidebar:
         color: var(--text-color) !important;
     }
     [data-testid="stNumberInput"] button,
-    [data-testid="stDateInput"] button,
-    [data-testid="stSelectbox"] button,
-    [data-testid="stSelectbox"] svg {
+    [data-testid="stDateInput"] button {
         background-color: var(--dashboard-control-bg, #1f2937) !important;
         color: var(--dashboard-control-text, #f8fafc) !important;
         fill: var(--dashboard-control-text, #f8fafc) !important;
-        border: 1px solid var(--dashboard-control-border, #64748b) !important;
+        border: 1px solid color-mix(in srgb, var(--dashboard-control-border, #64748b) 72%, transparent) !important;
+        border-radius: 8px !important;
+        width: 2rem !important;
+        min-width: 2rem !important;
+        height: 2.15rem !important;
+        margin-left: 0.24rem !important;
+        padding: 0 !important;
+        font-size: 1rem !important;
+        font-weight: 600 !important;
+        line-height: 1 !important;
+        box-shadow: none !important;
+        opacity: 1 !important;
+    }
+    [data-testid="stSelectbox"] button {
+        background: transparent !important;
+        border: 0 !important;
+        box-shadow: none !important;
+        color: var(--dashboard-control-text, #f8fafc) !important;
+        padding: 0.2rem !important;
+    }
+    [data-testid="stSelectbox"] svg {
+        background: transparent !important;
+        border: 0 !important;
+        border-radius: 0 !important;
+        color: var(--dashboard-control-text, #f8fafc) !important;
+        fill: var(--dashboard-control-text, #f8fafc) !important;
+        stroke: var(--dashboard-control-text, #f8fafc) !important;
+        width: 1rem !important;
+        height: 1rem !important;
         opacity: 1 !important;
     }
     [data-testid="stNumberInput"] button *,
@@ -2805,10 +2842,10 @@ with st.sidebar:
         opacity: 1 !important;
     }
     [data-testid="stNumberInput"] button:hover,
-    [data-testid="stDateInput"] button:hover,
-    [data-testid="stSelectbox"] button:hover {
+    [data-testid="stDateInput"] button:hover {
         filter: brightness(1.18) !important;
         border-color: var(--dashboard-control-text, #f8fafc) !important;
+        transform: translateY(-1px) !important;
     }
     [data-baseweb="popover"], [role="listbox"], [role="option"] {
         background-color: var(--secondary-background-color) !important;
