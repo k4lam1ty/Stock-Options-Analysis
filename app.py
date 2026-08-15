@@ -157,7 +157,9 @@ st.set_page_config(
     page_title="Stock Analysis Dashboard", 
     layout="wide",
     page_icon="📈",
-    initial_sidebar_state="expanded"
+    # Streamlit keeps the sidebar open on desktop and collapses it into a
+    # touch-friendly drawer on phones, preventing it from covering the chart.
+    initial_sidebar_state="auto"
 )
 
 # ============================================================
@@ -2146,17 +2148,20 @@ def tradingview_full_chart(ticker, timeframe="D", theme="dark"):
         // Keep the market chart dark in both dashboard appearances.  This is
         // easier on the eyes for candlesticks and avoids a bright white chart.
         const chartTheme = "dark";
+        // The full drawing toolbar consumes too much of a narrow phone chart.
+        // It remains available in TradingView's full-screen/popup view.
+        const compactMobileChart = window.innerWidth <= 640;
         const toolbarBackground = "#0e1117";
         const loadingBackground = "#0e1117";
         new TradingView.widget({{
-            "width": "100%", "height": 700, "symbol": {chart_symbol},
+            "width": "100%", "height": compactMobileChart ? 430 : 700, "symbol": {chart_symbol},
             "interval": {chart_interval}, "timezone": "America/Chicago",
             "theme": chartTheme, "style": "1", "locale": "en",
             "toolbar_bg": toolbarBackground, "enable_publishing": true,
             "allow_symbol_change": true, "save_image": true, "calendar": true,
             "container_id": "tradingview_full_chart",
             "studies": ["RSI@tv-basicstudies", "MACD@tv-basicstudies"],
-            "withdateranges": true, "hide_side_toolbar": false,
+            "withdateranges": true, "hide_side_toolbar": compactMobileChart,
             "show_popup_button": true, "popup_width": "1000", "popup_height": "650",
             "loading_screen": {{ "backgroundColor": loadingBackground }}
         }});
