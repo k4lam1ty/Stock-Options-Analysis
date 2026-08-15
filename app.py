@@ -3114,6 +3114,35 @@ div[data-testid="stTabs"] [role="tab"][aria-selected="true"] * {
 div[data-testid="stTabs"] [data-baseweb="tab-highlight"] {
     display: none !important;
 }
+/* The desktop tab labels are deliberately spacious.  On phones, tighten
+   only this navigation rail so every destination remains reachable without
+   a clipped label or a horizontal scroll surprise. */
+@media (max-width: 640px) {
+    div[data-testid="stTabs"] div[data-baseweb="tab-list"],
+    div[data-testid="stTabs"] div[role="tablist"] {
+        width: 100% !important;
+        max-width: 100% !important;
+        padding: 0.2rem !important;
+        gap: 0 !important;
+        justify-content: space-between !important;
+        overflow: hidden !important;
+    }
+    div[data-testid="stTabs"] [data-baseweb="tab"],
+    div[data-testid="stTabs"] [role="tab"] {
+        flex: 0 1 auto !important;
+        min-width: 0 !important;
+        padding: 0.42rem 0.28rem !important;
+        font-size: 0.7rem !important;
+        letter-spacing: -0.01em !important;
+    }
+}
+@media (max-width: 360px) {
+    div[data-testid="stTabs"] [data-baseweb="tab"],
+    div[data-testid="stTabs"] [role="tab"] {
+        padding: 0.38rem 0.15rem !important;
+        font-size: 0.65rem !important;
+    }
+}
 </style>
 """, unsafe_allow_html=True)
 
