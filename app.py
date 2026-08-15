@@ -886,6 +886,16 @@ def install_page_navigation_helpers():
                         child.style.setProperty('stroke', text, 'important');
                     }});
                 }});
+                doc.querySelectorAll('[data-testid="stSelectbox"] [data-baseweb="select"], [data-testid="stSelectbox"] [data-baseweb="select"] > div').forEach((selectLayer) => {{
+                    selectLayer.style.setProperty('background-color', controlBackground, 'important');
+                    selectLayer.style.setProperty('color', text, 'important');
+                    selectLayer.style.setProperty('border-color', controlBorder, 'important');
+                }});
+                doc.querySelectorAll('[data-baseweb="popover"] [role="listbox"], [role="listbox"], [role="option"]').forEach((menuLayer) => {{
+                    menuLayer.style.setProperty('background-color', controlBackground, 'important');
+                    menuLayer.style.setProperty('color', text, 'important');
+                    menuLayer.style.setProperty('border-color', controlBorder, 'important');
+                }});
             };
             paintCustomThemeElements();
             setTimeout(paintCustomThemeElements, 350);
@@ -2821,6 +2831,20 @@ with st.sidebar:
         color: var(--dashboard-control-text, #f8fafc) !important;
         padding: 0.2rem !important;
     }
+    /* Match the option selector to the small +/- control buttons. */
+    [data-testid="stSelectbox"] [data-baseweb="select"],
+    [data-testid="stSelectbox"] [data-baseweb="select"] > div,
+    [data-testid="stSelectbox"] [data-baseweb="select"] > div > div {
+        background-color: var(--dashboard-control-bg, #1f2937) !important;
+        color: var(--dashboard-control-text, #f8fafc) !important;
+        border-color: var(--dashboard-control-border, #64748b) !important;
+    }
+    [data-testid="stSelectbox"] [data-baseweb="select"] input,
+    [data-testid="stSelectbox"] [data-baseweb="select"] span {
+        background: transparent !important;
+        color: var(--dashboard-control-text, #f8fafc) !important;
+        -webkit-text-fill-color: var(--dashboard-control-text, #f8fafc) !important;
+    }
     [data-testid="stSelectbox"] svg {
         background: transparent !important;
         border: 0 !important;
@@ -2848,8 +2872,13 @@ with st.sidebar:
         transform: translateY(-1px) !important;
     }
     [data-baseweb="popover"], [role="listbox"], [role="option"] {
-        background-color: var(--secondary-background-color) !important;
-        color: var(--text-color) !important;
+        background-color: var(--dashboard-control-bg, #1f2937) !important;
+        color: var(--dashboard-control-text, #f8fafc) !important;
+        border-color: var(--dashboard-control-border, #64748b) !important;
+    }
+    [role="option"]:hover, [role="option"][aria-selected="true"] {
+        background-color: color-mix(in srgb, var(--dashboard-control-bg, #1f2937) 78%, var(--dashboard-control-text, #f8fafc)) !important;
+        color: var(--dashboard-control-text, #f8fafc) !important;
     }
     /* Keep dropdown arrows and +/- controls readable in both modes. */
     [data-testid="stSelectbox"] svg,
