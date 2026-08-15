@@ -866,6 +866,7 @@ def install_page_navigation_helpers():
                 });
                 const controlBackground = isLight ? '#f8fafc' : '#1f2937';
                 const controlBorder = isLight ? '#94a3b8' : '#64748b';
+                const controlButton = isLight ? '#e2e8f0' : '#334155';
                 doc.querySelectorAll('[data-testid="stNumberInput"] button, [data-testid="stDateInput"] button').forEach((control) => {{
                     control.style.setProperty('background-color', controlBackground, 'important');
                     control.style.setProperty('color', text, 'important');
@@ -876,7 +877,7 @@ def install_page_navigation_helpers():
                         child.style.setProperty('fill', text, 'important');
                     }});
                 }});
-                doc.querySelectorAll('[data-testid="stSelectbox"] button, [data-testid="stSelectbox"] svg').forEach((control) => {{
+                doc.querySelectorAll('[data-testid="stSelectbox"] button').forEach((control) => {{
                     control.style.setProperty('background-color', 'transparent', 'important');
                     control.style.setProperty('border', '0', 'important');
                     control.style.setProperty('color', text, 'important');
@@ -886,6 +887,16 @@ def install_page_navigation_helpers():
                         child.style.setProperty('fill', text, 'important');
                         child.style.setProperty('stroke', text, 'important');
                     }});
+                }});
+                doc.querySelectorAll('[data-testid="stSelectbox"] svg').forEach((arrow) => {{
+                    arrow.style.setProperty('display', 'block', 'important');
+                    arrow.style.setProperty('background-color', controlButton, 'important');
+                    arrow.style.setProperty('border', `1px solid ${{controlBorder}}`, 'important');
+                    arrow.style.setProperty('border-radius', '7px', 'important');
+                    arrow.style.setProperty('box-sizing', 'border-box', 'important');
+                    arrow.style.setProperty('color', text, 'important');
+                    arrow.style.setProperty('fill', text, 'important');
+                    arrow.style.setProperty('stroke', text, 'important');
                 }});
                 doc.querySelectorAll('[data-testid="stSelectbox"] [data-baseweb="select"], [data-testid="stSelectbox"] [data-baseweb="select"] > div').forEach((selectLayer) => {{
                     selectLayer.style.setProperty('background-color', controlBackground, 'important');
@@ -2859,33 +2870,18 @@ with st.sidebar:
         -webkit-text-fill-color: var(--dashboard-control-text, #f8fafc) !important;
     }
     [data-testid="stSelectbox"] svg {
-        display: none !important;
-    }
-    [data-testid="stSelectbox"] [data-baseweb="select"] > div::after {
-        content: "⌄" !important;
-        position: absolute !important;
-        right: 0.83rem !important;
-        top: 50% !important;
-        transform: translateY(-58%) !important;
-        color: var(--dashboard-control-text, #f8fafc) !important;
-        font-size: 1.25rem !important;
-        font-weight: 600 !important;
-        line-height: 1 !important;
-        pointer-events: none !important;
-        z-index: 1 !important;
-    }
-    [data-testid="stSelectbox"] [data-baseweb="select"] > div::before {
-        content: "" !important;
-        position: absolute !important;
-        right: 0.24rem !important;
-        top: 0.23rem !important;
-        bottom: 0.23rem !important;
-        width: 1.85rem !important;
+        display: block !important;
+        background-color: var(--dashboard-control-button, #334155) !important;
         border: 1px solid var(--dashboard-control-border, #64748b) !important;
         border-radius: 7px !important;
-        background-color: var(--dashboard-control-button, #334155) !important;
         box-sizing: border-box !important;
-        pointer-events: none !important;
+        color: var(--dashboard-control-text, #f8fafc) !important;
+        fill: var(--dashboard-control-text, #f8fafc) !important;
+        stroke: var(--dashboard-control-text, #f8fafc) !important;
+        width: 2rem !important;
+        height: 2rem !important;
+        padding: 0.45rem !important;
+        opacity: 1 !important;
     }
     [data-testid="stNumberInput"] button *,
     [data-testid="stDateInput"] button *,
