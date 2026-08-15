@@ -881,22 +881,18 @@ def install_page_navigation_helpers():
                     control.style.setProperty('background-color', 'transparent', 'important');
                     control.style.setProperty('border', '0', 'important');
                     control.style.setProperty('color', text, 'important');
-                    control.style.setProperty('fill', text, 'important');
                     control.querySelectorAll('*').forEach((child) => {{
                         child.style.setProperty('color', text, 'important');
-                        child.style.setProperty('fill', text, 'important');
-                        child.style.setProperty('stroke', text, 'important');
                     }});
                 }});
                 doc.querySelectorAll('[data-testid="stSelectbox"] svg').forEach((arrow) => {{
                     arrow.style.setProperty('display', 'block', 'important');
-                    arrow.style.setProperty('background-color', controlButton, 'important');
-                    arrow.style.setProperty('border', `1px solid ${{controlBorder}}`, 'important');
-                    arrow.style.setProperty('border-radius', '7px', 'important');
-                    arrow.style.setProperty('box-sizing', 'border-box', 'important');
+                    arrow.style.setProperty('background-color', 'transparent', 'important');
+                    arrow.style.setProperty('border', '0', 'important');
+                    arrow.style.setProperty('padding', '0', 'important');
                     arrow.style.setProperty('color', text, 'important');
-                    arrow.style.setProperty('fill', text, 'important');
-                    arrow.style.setProperty('stroke', text, 'important');
+                    arrow.style.removeProperty('fill');
+                    arrow.style.removeProperty('stroke');
                 }});
                 doc.querySelectorAll('[data-testid="stSelectbox"] [data-baseweb="select"], [data-testid="stSelectbox"] [data-baseweb="select"] > div').forEach((selectLayer) => {{
                     selectLayer.style.setProperty('background-color', controlBackground, 'important');
@@ -2863,6 +2859,12 @@ with st.sidebar:
         border-color: var(--dashboard-control-border, #64748b) !important;
         box-shadow: 0 0 0 1px var(--dashboard-control-border, #64748b) !important;
     }
+    [data-testid="stSelectbox"] [role="combobox"],
+    [data-testid="stSelectbox"] [aria-expanded] {
+        border-color: var(--dashboard-control-border, #64748b) !important;
+        box-shadow: none !important;
+        outline: none !important;
+    }
     [data-testid="stSelectbox"] [data-baseweb="select"] input,
     [data-testid="stSelectbox"] [data-baseweb="select"] span {
         background: transparent !important;
@@ -2871,25 +2873,23 @@ with st.sidebar:
     }
     [data-testid="stSelectbox"] svg {
         display: block !important;
-        background-color: var(--dashboard-control-button, #334155) !important;
-        border: 1px solid var(--dashboard-control-border, #64748b) !important;
-        border-radius: 7px !important;
-        box-sizing: border-box !important;
+        background: transparent !important;
+        border: 0 !important;
+        border-radius: 0 !important;
         color: var(--dashboard-control-text, #f8fafc) !important;
-        fill: var(--dashboard-control-text, #f8fafc) !important;
-        stroke: var(--dashboard-control-text, #f8fafc) !important;
-        width: 2rem !important;
-        height: 2rem !important;
-        padding: 0.45rem !important;
+        width: 1rem !important;
+        height: 1rem !important;
+        padding: 0 !important;
         opacity: 1 !important;
+    }
+    [data-testid="stSelectbox"] svg path {
+        fill: currentColor !important;
+        stroke: currentColor !important;
     }
     [data-testid="stNumberInput"] button *,
     [data-testid="stDateInput"] button *,
-    [data-testid="stSelectbox"] button *,
-    [data-testid="stSelectbox"] svg * {
+    [data-testid="stSelectbox"] button * {
         color: var(--dashboard-control-text, #f8fafc) !important;
-        fill: var(--dashboard-control-text, #f8fafc) !important;
-        stroke: var(--dashboard-control-text, #f8fafc) !important;
         opacity: 1 !important;
     }
     [data-testid="stNumberInput"] button:hover,
@@ -2908,7 +2908,6 @@ with st.sidebar:
         color: var(--dashboard-control-text, #f8fafc) !important;
     }
     /* Keep dropdown arrows and +/- controls readable in both modes. */
-    [data-testid="stSelectbox"] svg,
     [data-testid="stNumberInput"] svg,
     [data-testid="stDateInput"] svg {
         color: var(--dashboard-control-text, #f8fafc) !important;
