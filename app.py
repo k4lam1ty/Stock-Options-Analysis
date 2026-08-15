@@ -786,6 +786,8 @@ def install_page_navigation_helpers():
                 root.style.setProperty('--dashboard-sticky-rail', isLight ? '#ffffff' : '#0e1117');
                 root.style.setProperty('--dashboard-sticky-border', isLight ? '#d8dee8' : '#374151');
                 root.style.setProperty('--dashboard-control-text', isLight ? '#111827' : '#f8fafc');
+                root.style.setProperty('--dashboard-control-bg', isLight ? '#f8fafc' : '#1f2937');
+                root.style.setProperty('--dashboard-control-border', isLight ? '#94a3b8' : '#64748b');
                 root.style.setProperty('--dashboard-tab-text', isLight ? '#1f2937' : '#f8fafc');
                 root.style.setProperty('--dashboard-option-card-bg', isLight ? '#ffffff' : '#0e1117');
                 root.style.setProperty('--dashboard-option-card-border', isLight ? '#d8dee8' : '#374151');
@@ -861,6 +863,18 @@ def install_page_navigation_helpers():
                     element.style.setProperty('color', text, 'important');
                     element.style.setProperty('border-color', border, 'important');
                 });
+                const controlBackground = isLight ? '#f8fafc' : '#1f2937';
+                const controlBorder = isLight ? '#94a3b8' : '#64748b';
+                doc.querySelectorAll('[data-testid="stNumberInput"] button, [data-testid="stDateInput"] button, [data-testid="stSelectbox"] button, [data-testid="stSelectbox"] svg').forEach((control) => {{
+                    control.style.setProperty('background-color', controlBackground, 'important');
+                    control.style.setProperty('color', text, 'important');
+                    control.style.setProperty('fill', text, 'important');
+                    control.style.setProperty('border-color', controlBorder, 'important');
+                    control.querySelectorAll('*').forEach((child) => {{
+                        child.style.setProperty('color', text, 'important');
+                        child.style.setProperty('fill', text, 'important');
+                    }});
+                }});
             };
             paintCustomThemeElements();
             setTimeout(paintCustomThemeElements, 350);
@@ -2773,11 +2787,28 @@ with st.sidebar:
     }
     [data-testid="stNumberInput"] button,
     [data-testid="stDateInput"] button,
+    [data-testid="stSelectbox"] button,
     [data-testid="stSelectbox"] svg {
-        background-color: var(--secondary-background-color) !important;
-        color: var(--text-color) !important;
-        fill: var(--text-color) !important;
-        border-color: rgba(128, 128, 128, 0.35) !important;
+        background-color: var(--dashboard-control-bg, #1f2937) !important;
+        color: var(--dashboard-control-text, #f8fafc) !important;
+        fill: var(--dashboard-control-text, #f8fafc) !important;
+        border: 1px solid var(--dashboard-control-border, #64748b) !important;
+        opacity: 1 !important;
+    }
+    [data-testid="stNumberInput"] button *,
+    [data-testid="stDateInput"] button *,
+    [data-testid="stSelectbox"] button *,
+    [data-testid="stSelectbox"] svg * {
+        color: var(--dashboard-control-text, #f8fafc) !important;
+        fill: var(--dashboard-control-text, #f8fafc) !important;
+        stroke: var(--dashboard-control-text, #f8fafc) !important;
+        opacity: 1 !important;
+    }
+    [data-testid="stNumberInput"] button:hover,
+    [data-testid="stDateInput"] button:hover,
+    [data-testid="stSelectbox"] button:hover {
+        filter: brightness(1.18) !important;
+        border-color: var(--dashboard-control-text, #f8fafc) !important;
     }
     [data-baseweb="popover"], [role="listbox"], [role="option"] {
         background-color: var(--secondary-background-color) !important;
@@ -2789,7 +2820,9 @@ with st.sidebar:
     [data-testid="stDateInput"] svg {
         color: var(--dashboard-control-text, #f8fafc) !important;
         fill: var(--dashboard-control-text, #f8fafc) !important;
+        stroke: var(--dashboard-control-text, #f8fafc) !important;
         -webkit-text-fill-color: var(--dashboard-control-text, #f8fafc) !important;
+        opacity: 1 !important;
     }
     /* Buttons must follow the visitor's current Streamlit appearance.  The
        earlier server-side palette can be stale after the visitor switches
