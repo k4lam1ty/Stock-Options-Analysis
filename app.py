@@ -515,13 +515,18 @@ st.markdown("""
             gap: 0.65rem !important;
         }
 
-        /* Two compact cards per row is much easier to scan than six tiny
-           cards or a long single-column page. */
-        [data-testid="column"] {
+        /* Keep complex rows (charts, tables, option tools) full-width.  Only
+           compact metric cards use a two-column phone layout. */
+        [data-testid="stHorizontalBlock"] > [data-testid="column"] {
+            flex: 1 1 100% !important;
+            min-width: 100% !important;
+            width: 100% !important;
+            margin-bottom: 0.15rem !important;
+        }
+        [data-testid="stHorizontalBlock"]:has([data-testid="stMetric"]) > [data-testid="column"] {
             flex: 1 1 calc(50% - 0.4rem) !important;
             min-width: calc(50% - 0.4rem) !important;
             width: calc(50% - 0.4rem) !important;
-            margin-bottom: 0.15rem !important;
         }
 
         div[data-testid="stMetric"] {
@@ -569,6 +574,20 @@ st.markdown("""
         .stSidebar { width: min(86vw, 320px) !important; }
         h1 { font-size: 1.55rem !important; }
         h2, h3 { font-size: 1.2rem !important; }
+    }
+
+    /* CookieManager runs invisibly.  The generic mobile iframe rule above
+       must not turn it into a large blank spacer before the sign-in screen. */
+    [data-testid="stElementContainer"].st-key-CookieManager-sync_cookies {
+        height: 0 !important;
+        min-height: 0 !important;
+        margin: 0 !important;
+        overflow: hidden !important;
+    }
+    iframe[title^="streamlit_cookies_manager"] {
+        height: 0 !important;
+        min-height: 0 !important;
+        border: 0 !important;
     }
 </style>
 """, unsafe_allow_html=True)
@@ -1171,7 +1190,7 @@ def show_login_screen(auth_client):
     st.title("📈 Stock Analysis Dashboard")
     st.subheader("Sign in to use your personal watchlist")
     st.caption("Each account gets its own saved tickers.")
-    sign_in_tab, sign_up_tab, reset_tab = st.tabs(["Sign in", "Create account", "Forgot password?"])
+    sign_in_tab, sign_up_tab, reset_tab = st.tabs(["Sign in", "Sign up", "Reset"])
 
     with sign_in_tab:
         with st.form("sign_in_form"):
